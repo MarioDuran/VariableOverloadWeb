@@ -1,0 +1,2370 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>UNIX DOOM VR - TecGPT Campaign</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'Courier New', Courier, monospace;
+            color: #0f0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        #info {
+            text-align: center;
+            z-index: 10;
+            max-width: 980px;
+            padding: 24px;
+        }
+        h1 {
+            font-size: 80px;
+            margin: 0;
+            text-shadow: 0 0 15px #0f0;
+            letter-spacing: 5px;
+        }
+        p { color: #55ff55; font-size: 18px; }
+        #game-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+        }
+        #error-log { color: #ff0000; font-weight: bold; margin-top: 20px; }
+    </style>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.158.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.158.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="info">
+        <h1>START.<br>VARIABLE OVERLOAD.</h1>
+        <div id="error-log"></div>
+    </div>
+
+    <div id="game-container"></div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { VRButton } from 'three/addons/webxr/VRButton.js';
+
+        try {
+            // --- SISTEMA DE ARCHIVOS / CAMPAÑA ---
+            const fsTree = {
+                "/": ["home", "var", "etc", "kernel"],
+                "/home": ["hacker"],
+                "/home/hacker": ["payloads"],
+                "/home/hacker/payloads": ["float_heap"],
+                "/var": ["log"],
+                "/var/log": ["string_leak"],
+                "/etc": ["flags"],
+                "/etc/flags": ["boolean_gate"],
+                "/kernel": ["root_cause"],
+                "/kernel/root_cause": []
+            };
+
+            const missions = [
+                {
+                    key: 'float',
+                    route: '/home/hacker/payloads/float_heap',
+                    unlock: 'float',
+                    label: 'ARC-FLOAT',
+                    intro: 'Mi sistema de conteo de referencias me indica que el virus está en la ruta /home/hacker/payloads/float_heap. Ve y elimina el virus.',
+                    onUpgrade: 'Upgrade ARC-FLOAT instalado. Ahora puedes cambiar el modo de la pistola ARC y eliminar variables flotantes.'
+                },
+                {
+                    key: 'string',
+                    route: '/var/log/string_leak',
+                    unlock: 'string',
+                    label: 'ARC-STRING',
+                    intro: 'Boss, el heap flotante quedó estable. Detecto corrupción de cadenas en /var/log/string_leak. Dirígete ahí y elimina los strings infectados.',
+                    onUpgrade: 'Pistola de strings sincronizada. Cambia al modo STRING para erradicar esas cadenas corruptas.'
+                },
+                {
+                    key: 'bool',
+                    route: '/etc/flags/boolean_gate',
+                    unlock: 'bool',
+                    label: 'ARC-BOOL',
+                    intro: 'Los strings dejaron de mutar. Ahora hay flags booleanas alterando permisos en /etc/flags/boolean_gate. Neutralízalas.',
+                    onUpgrade: 'Módulo booleano cargado. El modo BOOL puede eliminar true y false infectados.'
+                },
+                {
+                    key: 'auto',
+                    route: '/kernel/root_cause',
+                    unlock: 'auto',
+                    label: 'ARC-AUTO',
+                    intro: 'He identificado la raíz del problema en /kernel/root_cause. Prepárate: ahí convergen todas las variables.',
+                    onUpgrade: 'Pistola de auto tipado obtenida. Este modo infiere el tipo del objetivo y daña cualquier variable.'
+                }
+            ];
+
+            const TECGPT_VOICE_LINES = [
+                { fileBase: 'voice1', text: '¡Boss, soy tu asistente TecGPT, te encuentras en el directorio home del servidor.!' },
+                { fileBase: 'voice2', text: 'Ha sido infectado por el virus Variable Overload. De momento todo parece manejable porque son puras variables de tipo entero. Utiliza tu pistola ARC para eliminarlas.' },
+                { fileBase: 'voice3', text: 'Mi sistema de conteo de referencias me indica que el virus está en la ruta /home/hacker/payloads/float_heap. Ve y elimina el virus.' },
+                { fileBase: 'voice4', text: 'Detecto firmas de tipo FLOAT en esta sala. Hay un upgrade ARC-FLOAT cerca: recógelo antes de aguantar la oleada.' },
+                { fileBase: 'voice5', text: 'Upgrade ARC-FLOAT instalado. Ahora puedes cambiar el modo de la pistola ARC y eliminar variables flotantes.' },
+                { fileBase: 'voice6', text: 'Boss, el heap flotante quedó estable. Detecto corrupción de cadenas en /var/log/string_leak. Dirígete ahí y elimina los strings infectados.' },
+                { fileBase: 'voice7', text: 'Detecto firmas de tipo STRING en esta sala. Hay un upgrade ARC-STRING cerca: recógelo antes de aguantar la oleada.' },
+                { fileBase: 'voice8', text: 'Pistola de strings sincronizada. Cambia al modo STRING para erradicar esas cadenas corruptas.' },
+                { fileBase: 'voice9', text: 'Los strings dejaron de mutar. Ahora hay flags booleanas alterando permisos en /etc/flags/boolean_gate. Neutralízalas.' },
+                { fileBase: 'voice10', text: 'Detecto firmas de tipo BOOL en esta sala. Hay un upgrade ARC-BOOL cerca: recógelo antes de aguantar la oleada.' },
+                { fileBase: 'voice11', text: 'Módulo booleano cargado. El modo BOOL puede eliminar true y false infectados.' },
+                { fileBase: 'voice12', text: 'He identificado la raíz del problema en /kernel/root_cause. Prepárate: ahí convergen todas las variables.' },
+                { fileBase: 'voice13', text: 'Detecto firmas de tipo AUTO en esta sala. Hay un upgrade ARC-AUTO cerca: recógelo antes de aguantar la oleada.' },
+                { fileBase: 'voice14', text: 'Pistola de auto tipado obtenida. Este modo infiere el tipo del objetivo y daña cualquier variable.' },
+                { fileBase: 'voice15', text: 'La horda principal cayó, Boss. Ahora apareció el proceso raíz: Variable Overload. Tiene muchas referencias vivas y declarará más variables. Usa auto tipado.' },
+                { fileBase: 'voice16', text: 'El virus invocó más variables. Mantén auto tipado activo y controla la horda.' },
+                { fileBase: 'voice17', text: 'El virus ha sido eliminado. Variable Overload ha sido purgado del servidor. Buen trabajo, Boss.' },
+                { fileBase: 'voice18', text: 'Puerta bloqueada. Limpia la oleada de esta habitación para desbloquear el directorio.' },
+                { fileBase: 'voice19', text: 'Ruta no autorizada todavía. Sigue la ruta sugerida para eliminar el virus.' },
+                { fileBase: 'voice20', text: 'Detecté recursos libres en esta habitación. Revisa el minimapa: aparecen como puntos verdes.' },
+                { fileBase: 'voice21', text: 'Directorio limpio. Las puertas vuelven a estar disponibles.' },
+                { fileBase: 'voice22', text: '¡Boss, detrás de ti!' },
+                { fileBase: 'voice23', text: '¡Boss, ¿estás bien? No me aparece tu ubicación, Boss ¡por favor, responde!' },
+                { fileBase: 'voice24', text: '¡Preparate, ahí vienen!' }
+            ];
+
+            const allWeaponTypes = ['int', 'float', 'string', 'bool', 'auto'];
+            const weaponColors = {
+                int: 0x00ff00,
+                float: 0x00ffff,
+                string: 0xffff00,
+                bool: 0xaa00ff,
+                auto: 0xffffff
+            };
+            const weaponNames = {
+                int: 'ARC-INT',
+                float: 'ARC-FLOAT',
+                string: 'ARC-STRING',
+                bool: 'ARC-BOOL',
+                auto: 'ARC-AUTO'
+            };
+            const typeLabels = {
+                int: ['404', '1337', '-1', '0xFF'],
+                float: ['3.14', 'NaN', '2.71', '∞.0'],
+                string: ['"null"', '"DROP"', '"NaN"', '"EOF"'],
+                bool: ['true', 'false', '!true', '0==1'],
+                boss: ['OVERLOAD']
+            };
+
+            // --- THREE / VR ---
+            let camera, scene, renderer;
+            let playerDolly;
+            let rightController = null;
+            let leftController = null;
+            let rightWeaponMesh = null;
+            let leftWeaponMesh = null;
+            let weaponMat = null;
+            let gameOverMesh = null;
+            let notificationMesh = null;
+
+            // --- ESTADO DEL JUEGO ---
+            let health = 100;
+            let score = 0;
+            let isGameOver = false;
+            let isGameRunning = false;
+            let stamina = 100;
+            const MAX_STAMINA = 100;
+
+            let clipAmmo = 36;
+            const MAX_AMMO = 300;
+            let reserveAmmo = 0;
+            let isReloading = false;
+            let rapidFireUntil = 0;
+
+            let currentPath = '/';
+            let unlockedWeapons = ['int'];
+            let currentWeaponIndex = 0;
+            let checkpointWeaponType = 'int';
+            let weaponSwitchCooldown = 0;
+            let rightGripWasPressed = false;
+            let rightStickWeaponAxisWasActive = false;
+            let missionIndex = 0;
+            let pendingWaveAfterUpgrade = false;
+            let finalBossSpawned = false;
+            let finalBossDefeated = false;
+
+            const roomStates = new Map();
+            const claimedUpgrades = new Set();
+
+            // --- MAPA / ENTIDADES ---
+            let mapGrid = [];
+            const TILE_SIZE = 10;
+            const GRID_SIZE = 15;
+            const ENEMY_COUNT_MULTIPLIER = 1.25;
+            let walls = [];
+            let wallMeshes = [];
+            let doors = [];
+            let enemies = [];
+            let dyingEnemies = [];
+            let lasers = [];
+            let pickups = [];
+
+            let activeWave = null;
+            let flowField = Array(GRID_SIZE).fill().map(() => Array(GRID_SIZE).fill(9999));
+            let lastFlowFieldUpdate = 0;
+            let lastHudUpdate = 0;
+            let nextRandomSupplyTime = 0;
+            let doorWarningCooldown = 0;
+            let resourcesHintShown = false;
+            let isDirectoryTransitioning = false;
+            let loadingMesh = null;
+            let lastBehindWarningTime = -999;
+            let playerDeathVoiceQueued = false;
+
+            const clock = new THREE.Clock();
+
+            // --- HUD VR ---
+            const hudCanvas = document.createElement('canvas');
+            hudCanvas.width = 1280;
+            hudCanvas.height = 320;
+            const vrHudCtx = hudCanvas.getContext('2d');
+            const vrHudTex = new THREE.CanvasTexture(hudCanvas);
+            let vrHudMesh;
+
+            // --- NOTIFICACIONES TecGPT ---
+            const notificationCanvas = document.createElement('canvas');
+            notificationCanvas.width = 1200;
+            notificationCanvas.height = 260;
+            const notificationCtx = notificationCanvas.getContext('2d');
+            const notificationTex = new THREE.CanvasTexture(notificationCanvas);
+            const notificationQueue = [];
+            let activeNotification = null;
+            let notificationStartTime = 0;
+
+            // --- AUDIO ---
+            let audioCtx;
+            let listener;
+            let bgm;
+            let currentTecGPTAudio = null;
+            let notificationPreparing = false;
+            const soundCache = new Map();
+
+            init();
+
+            function init() {
+                scene = new THREE.Scene();
+                scene.background = new THREE.Color(0x000a00);
+                scene.fog = new THREE.FogExp2(0x001100, 0.014);
+
+                camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+                camera.position.set(0, 1.6, 0);
+
+                const ambientLight = new THREE.AmbientLight(0x00aa00, 1.15);
+                scene.add(ambientLight);
+
+                renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+                renderer.setPixelRatio(window.devicePixelRatio);
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                renderer.xr.enabled = true;
+                document.getElementById('game-container').appendChild(renderer.domElement);
+
+                const vrButton = VRButton.createButton(renderer);
+                vrButton.addEventListener('click', () => {
+                    document.getElementById('info').style.display = 'none';
+                    if (!isGameRunning) startGame();
+                });
+                document.body.appendChild(vrButton);
+
+                playerDolly = new THREE.Group();
+                scene.add(playerDolly);
+                playerDolly.add(camera);
+
+                const pointLight = new THREE.PointLight(0x00ff00, 1.5, 42);
+                pointLight.position.set(0, 2, 0);
+                playerDolly.add(pointLight);
+
+                listener = new THREE.AudioListener();
+                camera.add(listener);
+                bgm = new THREE.Audio(listener);
+
+                // HUD superior/inferior del visor.
+                const hudGeo = new THREE.PlaneGeometry(1.9, 0.48);
+                const hudMat = new THREE.MeshBasicMaterial({ map: vrHudTex, transparent: true, depthTest: false });
+                vrHudMesh = new THREE.Mesh(hudGeo, hudMat);
+                vrHudMesh.renderOrder = 999;
+                vrHudMesh.position.set(0, 0.06, -1.25);
+                vrHudMesh.rotation.x = -0.05;
+                camera.add(vrHudMesh);
+
+                const notificationGeo = new THREE.PlaneGeometry(1.85, 0.40);
+                const notificationMat = new THREE.MeshBasicMaterial({ map: notificationTex, transparent: true, depthTest: false, opacity: 0 });
+                notificationMesh = new THREE.Mesh(notificationGeo, notificationMat);
+                notificationMesh.renderOrder = 1001;
+                notificationMesh.position.set(0, -0.54, -1.18);
+                notificationMesh.rotation.x = 0.08;
+                camera.add(notificationMesh);
+                drawNotification('');
+
+                loadingMesh = createLoadingScreenMesh();
+                camera.add(loadingMesh);
+
+                weaponMat = new THREE.MeshLambertMaterial({
+                    color: weaponColors.int,
+                    emissive: weaponColors.int,
+                    emissiveIntensity: 0.85
+                });
+
+                const onControllerConnected = (event) => {
+                    const controller = event.target;
+                    const handedness = event.data.handedness;
+                    controller.userData.isSelecting = false;
+                    controller.userData.nextShot = 0;
+
+                    if (handedness === 'right') {
+                        rightController = controller;
+                        rightWeaponMesh = createGunMesh();
+                        rightController.add(rightWeaponMesh);
+                        rightController.addEventListener('selectstart', () => {
+                            rightController.userData.isSelecting = true;
+                            fireWeapon(rightController, rightWeaponMesh);
+                        });
+                        rightController.addEventListener('selectend', () => rightController.userData.isSelecting = false);
+                    } else if (handedness === 'left') {
+                        leftController = controller;
+                        leftWeaponMesh = createGunMesh();
+                        leftController.add(leftWeaponMesh);
+                        leftController.addEventListener('selectstart', () => {
+                            leftController.userData.isSelecting = true;
+                            fireWeapon(leftController, leftWeaponMesh);
+                        });
+                        leftController.addEventListener('selectend', () => leftController.userData.isSelecting = false);
+                    }
+                };
+
+                const controller1 = renderer.xr.getController(0);
+                controller1.addEventListener('connected', onControllerConnected);
+                playerDolly.add(controller1);
+
+                const controller2 = renderer.xr.getController(1);
+                controller2.addEventListener('connected', onControllerConnected);
+                playerDolly.add(controller2);
+
+                buildBaseEnvironment();
+                updateHUD('SISTEMA EN ESPERA');
+
+                window.addEventListener('resize', onWindowResize);
+                renderer.setAnimationLoop(animate);
+            }
+
+            function buildBaseEnvironment() {
+                const gridGeo = new THREE.PlaneGeometry(GRID_SIZE * TILE_SIZE, GRID_SIZE * TILE_SIZE, GRID_SIZE, GRID_SIZE);
+                const gridMat = new THREE.MeshBasicMaterial({ color: 0x003300, wireframe: true });
+                const floor = new THREE.Mesh(gridGeo, gridMat);
+                floor.rotation.x = -Math.PI / 2;
+                floor.position.set((GRID_SIZE * TILE_SIZE) / 2 - TILE_SIZE / 2, 0, (GRID_SIZE * TILE_SIZE) / 2 - TILE_SIZE / 2);
+                scene.add(floor);
+
+                const ceiling = new THREE.Mesh(gridGeo, gridMat);
+                ceiling.rotation.x = Math.PI / 2;
+                ceiling.position.set((GRID_SIZE * TILE_SIZE) / 2 - TILE_SIZE / 2, TILE_SIZE, (GRID_SIZE * TILE_SIZE) / 2 - TILE_SIZE / 2);
+                scene.add(ceiling);
+            }
+
+            function createLoadingScreenMesh() {
+                const canvas = document.createElement('canvas');
+                canvas.width = 1024;
+                canvas.height = 512;
+                const ctx = canvas.getContext('2d');
+                const tex = new THREE.CanvasTexture(canvas);
+                const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false, opacity: 0 });
+                const mesh = new THREE.Mesh(new THREE.PlaneGeometry(3.5, 2.2), mat);
+                // Se dibuja detrás del HUD y de TecGPT para oscurecer solo el mundo.
+                mesh.renderOrder = 900;
+                mesh.position.set(0, 0.0, -1.08);
+                mesh.userData.ctx = ctx;
+                mesh.userData.tex = tex;
+                return mesh;
+            }
+
+            function showLoadingScreen(targetPath) {
+                if (!loadingMesh) return;
+                const ctx = loadingMesh.userData.ctx;
+                const tex = loadingMesh.userData.tex;
+                ctx.clearRect(0, 0, 1024, 512);
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.94)';
+                ctx.fillRect(0, 0, 1024, 512);
+                tex.needsUpdate = true;
+                loadingMesh.material.opacity = 1.0;
+            }
+
+            function hideLoadingScreen() {
+                if (loadingMesh) loadingMesh.material.opacity = 0;
+            }
+
+            function beginDirectoryTransition(targetPath) {
+                if (isDirectoryTransitioning) return;
+                isDirectoryTransitioning = true;
+                showLoadingScreen(targetPath);
+                setTimeout(() => {
+                    loadDirectory(targetPath);
+                    hideLoadingScreen();
+                    isDirectoryTransitioning = false;
+                }, 520);
+            }
+
+            function startGame() {
+                if (gameOverMesh) {
+                    camera.remove(gameOverMesh);
+                    gameOverMesh = null;
+                }
+
+                isGameRunning = true;
+                isGameOver = false;
+                health = 100;
+                score = 0;
+                clipAmmo = 120;
+                reserveAmmo = 0;
+                stamina = MAX_STAMINA;
+                isReloading = false;
+                rapidFireUntil = 0;
+                rightGripWasPressed = false;
+                rightStickWeaponAxisWasActive = false;
+                resourcesHintShown = false;
+                isDirectoryTransitioning = false;
+                lastBehindWarningTime = -999;
+                playerDeathVoiceQueued = false;
+                if (loadingMesh) loadingMesh.material.opacity = 0;
+                unlockedWeapons = ['int'];
+                currentWeaponIndex = 0;
+                checkpointWeaponType = 'int';
+                missionIndex = 0;
+                finalBossSpawned = false;
+                finalBossDefeated = false;
+                roomStates.clear();
+                claimedUpgrades.clear();
+                notificationQueue.length = 0;
+                activeNotification = null;
+                updateWeaponMaterial();
+
+                if (!bgm.isPlaying) {
+                    const audioLoader = new THREE.AudioLoader();
+                    audioLoader.load('soundtrack.mp3', (buffer) => {
+                        bgm.setBuffer(buffer);
+                        bgm.setLoop(true);
+                        bgm.setVolume(0.35);
+                        bgm.play();
+                    }, undefined, () => {});
+                }
+
+                loadDirectory('/');
+
+                notifyTecGPT('¡Boss, soy tu asistente TecGPT, te encuentras en el directorio home del servidor.!');
+                notifyTecGPT('Ha sido infectado por el virus Variable Overload. De momento todo parece manejable porque son puras variables de tipo entero. Utiliza tu pistola ARC para eliminarlas.');
+                notifyTecGPT(missions[0].intro);
+            }
+
+            // --- NOTIFICACIONES Y VOZ ---
+            function notifyTecGPT(text, speak = true, duration = null) {
+                notificationQueue.push({
+                    text,
+                    speak,
+                    duration: duration || Math.min(22, Math.max(7.0, text.length / 12)),
+                    lastTypedChars: -1,
+                    ready: false,
+                    audio: null,
+                    typeDuration: null
+                });
+                if (!activeNotification && !notificationPreparing) startNextNotification();
+            }
+
+            function startNextNotification() {
+                activeNotification = notificationQueue.shift() || null;
+                notificationPreparing = false;
+
+                if (!activeNotification) {
+                    drawNotification('');
+                    if (notificationMesh) notificationMesh.material.opacity = 0;
+                    return;
+                }
+
+                activeNotification.lastTypedChars = -1;
+                activeNotification.ready = false;
+                drawNotification('');
+                if (notificationMesh) notificationMesh.material.opacity = 0;
+
+                const line = activeNotification.speak ? findTecGPTVoiceLine(activeNotification.text) : null;
+                if (line) {
+                    notificationPreparing = true;
+                    loadTecGPTAudioFile(line.fileBase)
+                        .then(audio => {
+                            if (activeNotification) activeNotification.audio = audio;
+                            beginActiveNotification();
+                        })
+                        .catch(() => beginActiveNotification());
+                } else {
+                    beginActiveNotification();
+                }
+            }
+
+            function beginActiveNotification() {
+                if (!activeNotification) return;
+                notificationPreparing = false;
+                notificationStartTime = clock.getElapsedTime();
+                activeNotification.ready = true;
+                activeNotification.lastTypedChars = -1;
+
+                const displayLength = `TecGPT: "${activeNotification.text}"`.length;
+                if (activeNotification.audio && Number.isFinite(activeNotification.audio.duration) && activeNotification.audio.duration > 0) {
+                    activeNotification.duration = Math.max(activeNotification.duration, activeNotification.audio.duration + 1.0);
+                    activeNotification.typeDuration = Math.min(activeNotification.duration - 0.4, Math.max(3.5, activeNotification.audio.duration * 0.92));
+                } else {
+                    activeNotification.typeDuration = Math.max(4.0, displayLength / 18);
+                }
+
+                drawNotification(activeNotification.text, 0);
+                if (activeNotification.audio) {
+                    if (currentTecGPTAudio && currentTecGPTAudio !== activeNotification.audio) {
+                        try {
+                            currentTecGPTAudio.pause();
+                            currentTecGPTAudio.currentTime = 0;
+                        } catch (err) {}
+                    }
+                    currentTecGPTAudio = activeNotification.audio;
+                    currentTecGPTAudio.currentTime = 0;
+                    currentTecGPTAudio.play().catch(() => {});
+                }
+            }
+
+            function normalizeTecGPTLine(text) {
+                return String(text || '')
+                    .replace(/^TecGPT\s*[:\-\/]*\s*/i, '')
+                    .replace(/[“”]/g, '"')
+                    .replace(/\s+/g, ' ')
+                    .trim()
+                    .toLowerCase();
+            }
+
+            function findTecGPTVoiceLine(text) {
+                const normalized = normalizeTecGPTLine(text);
+                return TECGPT_VOICE_LINES.find(line => normalizeTecGPTLine(line.text) === normalized) || null;
+            }
+
+            function primeTecGPTVoice() {
+                // Los audios de TecGPT se cargan bajo demanda como voiceN.mp3.
+            }
+
+            function loadTecGPTAudioFile(fileBase) {
+                return new Promise((resolve, reject) => {
+                    const audio = new Audio(`${fileBase}.mp3`);
+                    let settled = false;
+                    const finish = () => {
+                        if (settled) return;
+                        settled = true;
+                        resolve(audio);
+                    };
+                    const fail = () => {
+                        if (settled) return;
+                        settled = true;
+                        reject(new Error(`No se pudo cargar ${fileBase}.mp3`));
+                    };
+                    audio.preload = 'auto';
+                    audio.volume = 1.0;
+                    audio.addEventListener('canplaythrough', finish, { once: true });
+                    audio.addEventListener('loadeddata', finish, { once: true });
+                    audio.addEventListener('error', fail, { once: true });
+                    setTimeout(() => {
+                        if (!settled && audio.readyState >= 2) finish();
+                    }, 1800);
+                    audio.load();
+                });
+            }
+
+            function drawNotification(text, visibleChars = Infinity) {
+                notificationCtx.clearRect(0, 0, notificationCanvas.width, notificationCanvas.height);
+                if (!text) {
+                    notificationTex.needsUpdate = true;
+                    return;
+                }
+
+                notificationCtx.fillStyle = 'rgba(0, 20, 10, 0.48)';
+                roundRect(notificationCtx, 80, 44, 1040, 154, 24, true, false);
+                notificationCtx.strokeStyle = 'rgba(0, 255, 170, 0.48)';
+                notificationCtx.lineWidth = 5;
+                roundRect(notificationCtx, 80, 44, 1040, 154, 24, false, true);
+
+                const displayText = `TecGPT: "${text}"`;
+                const typedText = displayText.slice(0, Math.max(0, Math.min(displayText.length, visibleChars)));
+                notificationCtx.fillStyle = 'rgba(234, 255, 255, 0.84)';
+                notificationCtx.font = 'bold 28px Courier New';
+                notificationCtx.textAlign = 'center';
+                wrapTextCentered(notificationCtx, typedText, 600, 98, 970, 34);
+                notificationTex.needsUpdate = true;
+            }
+
+            function updateNotification() {
+                if (!notificationMesh || !activeNotification || !activeNotification.ready) return;
+
+                const now = clock.getElapsedTime();
+                const elapsed = now - notificationStartTime;
+                const duration = activeNotification.duration;
+                let alpha = 1;
+                let y = -0.28;
+
+                if (elapsed < 0.45) {
+                    const t = elapsed / 0.45;
+                    y = THREE.MathUtils.lerp(-0.54, -0.28, easeOutCubic(t));
+                    alpha = t;
+                } else if (elapsed > duration - 0.45) {
+                    const t = (elapsed - (duration - 0.45)) / 0.45;
+                    y = THREE.MathUtils.lerp(-0.28, -0.54, easeOutCubic(t));
+                    alpha = 1 - t;
+                }
+
+                const displayLength = `TecGPT: "${activeNotification.text}"`.length;
+                const typeDuration = Math.max(1.0, activeNotification.typeDuration || (displayLength / 18));
+                const typedChars = Math.min(displayLength, Math.floor((elapsed / typeDuration) * displayLength));
+                if (typedChars !== activeNotification.lastTypedChars) {
+                    activeNotification.lastTypedChars = typedChars;
+                    drawNotification(activeNotification.text, typedChars);
+                }
+
+                notificationMesh.position.y = y;
+                notificationMesh.material.opacity = THREE.MathUtils.clamp(alpha * 0.78, 0, 0.78);
+
+                if (elapsed > duration) startNextNotification();
+            }
+
+            function easeOutCubic(t) {
+                return 1 - Math.pow(1 - t, 3);
+            }
+
+            function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
+                const words = text.split(' ');
+                let line = '';
+                for (let i = 0; i < words.length; i++) {
+                    const testLine = line + words[i] + ' ';
+                    const metrics = ctx.measureText(testLine);
+                    if (metrics.width > maxWidth && i > 0) {
+                        ctx.fillText(line, x, y);
+                        line = words[i] + ' ';
+                        y += lineHeight;
+                    } else {
+                        line = testLine;
+                    }
+                }
+                ctx.fillText(line, x, y);
+            }
+
+            function wrapTextCentered(ctx, text, centerX, y, maxWidth, lineHeight) {
+                const words = text.split(' ');
+                let line = '';
+                for (let i = 0; i < words.length; i++) {
+                    const testLine = line + words[i] + ' ';
+                    if (ctx.measureText(testLine).width > maxWidth && i > 0) {
+                        ctx.fillText(line.trimEnd(), centerX, y);
+                        line = words[i] + ' ';
+                        y += lineHeight;
+                    } else {
+                        line = testLine;
+                    }
+                }
+                ctx.fillText(line.trimEnd(), centerX, y);
+            }
+
+            function roundRect(ctx, x, y, w, h, r, fill, stroke) {
+                ctx.beginPath();
+                ctx.moveTo(x + r, y);
+                ctx.lineTo(x + w - r, y);
+                ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+                ctx.lineTo(x + w, y + h - r);
+                ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+                ctx.lineTo(x + r, y + h);
+                ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+                ctx.lineTo(x, y + r);
+                ctx.quadraticCurveTo(x, y, x + r, y);
+                ctx.closePath();
+                if (fill) ctx.fill();
+                if (stroke) ctx.stroke();
+            }
+
+            // --- HUD ---
+            function updateHUD(message = '') {
+                vrHudCtx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
+
+                const currentWeapon = unlockedWeapons[currentWeaponIndex] || 'int';
+                const colorHex = '#' + weaponColors[currentWeapon].toString(16).padStart(6, '0');
+
+                // Centro superior: barras limpias, sin texto encima.
+                const barWidth = 360;
+                const barHeight = 16;
+                const barX = 640 - (barWidth / 2);
+                const hpY = 58;
+                const staminaY = 82;
+
+                vrHudCtx.fillStyle = 'rgba(0, 60, 0, 0.42)';
+                vrHudCtx.fillRect(barX, hpY, barWidth, barHeight);
+                vrHudCtx.fillStyle = 'rgba(0, 255, 80, 0.82)';
+                vrHudCtx.fillRect(barX, hpY, (Math.max(0, health) / 100) * barWidth, barHeight);
+
+                vrHudCtx.fillStyle = 'rgba(0, 40, 70, 0.42)';
+                vrHudCtx.fillRect(barX, staminaY, barWidth, barHeight);
+                vrHudCtx.fillStyle = stamina > 20 ? 'rgba(0, 255, 255, 0.82)' : 'rgba(255, 40, 40, 0.82)';
+                vrHudCtx.fillRect(barX, staminaY, (stamina / MAX_STAMINA) * barWidth, barHeight);
+
+                const remaining = getRemainingEnemiesInRoom();
+                const roomState = getRoomState(currentPath);
+                vrHudCtx.textAlign = 'center';
+                vrHudCtx.fillStyle = 'rgba(120, 255, 160, 0.88)';
+                vrHudCtx.font = 'bold 26px Courier New';
+                vrHudCtx.fillText(currentPath, 640, 130);
+                vrHudCtx.fillStyle = activeWave ? 'rgba(255, 180, 0, 0.88)' : 'rgba(0, 255, 170, 0.82)';
+                vrHudCtx.font = 'bold 24px Courier New';
+                vrHudCtx.fillText(`ENEMIGOS: ${remaining}  |  ${roomState.cleared ? 'PUERTAS ABIERTAS' : 'PUERTAS BLOQUEADAS'}`, 640, 158);
+
+                if (message) {
+                    vrHudCtx.fillStyle = 'rgba(255, 190, 0, 0.9)';
+                    vrHudCtx.font = 'bold 26px Courier New';
+                    vrHudCtx.fillText(message, 640, 188);
+                }
+
+                // Parte inferior: arma a la izquierda y minimapa a la derecha, ambos cerca del centro.
+                vrHudCtx.textAlign = 'center';
+                vrHudCtx.fillStyle = colorHex;
+                vrHudCtx.font = 'bold 34px Courier New';
+                vrHudCtx.fillText(`[ ${weaponNames[currentWeapon]} ]`, 440, 286);
+
+                vrHudCtx.fillStyle = 'rgba(0, 255, 255, 0.88)';
+                vrHudCtx.font = 'bold 28px Courier New';
+                vrHudCtx.fillText(`BALAS: ${clipAmmo}`, 440, 318);
+
+                if (clock.getElapsedTime() < rapidFireUntil) {
+                    vrHudCtx.fillStyle = 'rgba(255, 255, 255, 0.92)';
+                    vrHudCtx.font = 'bold 24px Courier New';
+                    vrHudCtx.fillText('RAPID FIRE', 440, 298);
+                }
+
+                drawMinimap();
+                vrHudTex.needsUpdate = true;
+            }
+
+            function drawMinimap() {
+                const mapSize = 118;
+                const offsetX = 796;
+                const offsetY = hudCanvas.height - mapSize;
+                const centerX = offsetX + mapSize / 2;
+                const centerY = offsetY + mapSize / 2;
+                const worldSpan = GRID_SIZE * TILE_SIZE;
+                const scale = mapSize / worldSpan;
+
+                const forward = new THREE.Vector3();
+                camera.getWorldDirection(forward);
+                forward.y = 0;
+                if (forward.lengthSq() < 0.001) forward.set(0, 0, -1);
+                forward.normalize();
+                const right = new THREE.Vector3(-forward.z, 0, forward.x).normalize();
+
+                function worldToMini(wx, wz) {
+                    const dx = wx - playerDolly.position.x;
+                    const dz = wz - playerDolly.position.z;
+                    const localX = dx * right.x + dz * right.z;
+                    const localY = dx * forward.x + dz * forward.z;
+                    return {
+                        x: centerX + localX * scale,
+                        y: centerY - localY * scale
+                    };
+                }
+
+                function drawRotatedCell(gx, gz, fillStyle, strokeStyle = null, lineWidth = 1) {
+                    const half = TILE_SIZE / 2;
+                    const corners = [
+                        worldToMini(gx * TILE_SIZE - half, gz * TILE_SIZE - half),
+                        worldToMini(gx * TILE_SIZE + half, gz * TILE_SIZE - half),
+                        worldToMini(gx * TILE_SIZE + half, gz * TILE_SIZE + half),
+                        worldToMini(gx * TILE_SIZE - half, gz * TILE_SIZE + half)
+                    ];
+                    vrHudCtx.beginPath();
+                    vrHudCtx.moveTo(corners[0].x, corners[0].y);
+                    for (let i = 1; i < corners.length; i++) vrHudCtx.lineTo(corners[i].x, corners[i].y);
+                    vrHudCtx.closePath();
+                    if (fillStyle) {
+                        vrHudCtx.fillStyle = fillStyle;
+                        vrHudCtx.fill();
+                    }
+                    if (strokeStyle) {
+                        vrHudCtx.strokeStyle = strokeStyle;
+                        vrHudCtx.lineWidth = lineWidth;
+                        vrHudCtx.stroke();
+                    }
+                }
+
+                vrHudCtx.save();
+                vrHudCtx.fillStyle = 'rgba(0, 10, 0, 0.50)';
+                vrHudCtx.fillRect(offsetX, offsetY, mapSize, mapSize);
+                vrHudCtx.strokeStyle = 'rgba(0, 255, 0, 0.72)';
+                vrHudCtx.lineWidth = 2;
+                vrHudCtx.strokeRect(offsetX, offsetY, mapSize, mapSize);
+                vrHudCtx.beginPath();
+                vrHudCtx.rect(offsetX, offsetY, mapSize, mapSize);
+                vrHudCtx.clip();
+
+                for (let z = 0; z < GRID_SIZE; z++) {
+                    for (let x = 0; x < GRID_SIZE; x++) {
+                        if (mapGrid[z] && mapGrid[z][x] === 1) {
+                            drawRotatedCell(x, z, 'rgba(0, 120, 0, 0.68)');
+                        } else if (mapGrid[z] && mapGrid[z][x] === 2) {
+                            drawRotatedCell(x, z, 'rgba(230, 210, 0, 0.78)');
+                        }
+                    }
+                }
+
+                const nextDoor = getNextCampaignDoor();
+                if (nextDoor) {
+                    const gx = Math.round(nextDoor.mesh.position.x / TILE_SIZE);
+                    const gz = Math.round(nextDoor.mesh.position.z / TILE_SIZE);
+                    const pulse = 0.45 + 0.55 * ((Math.sin(clock.getElapsedTime() * 6.0) + 1) / 2);
+                    vrHudCtx.save();
+                    vrHudCtx.shadowColor = '#00ff66';
+                    vrHudCtx.shadowBlur = 18 + pulse * 14;
+                    drawRotatedCell(gx, gz, `rgba(0, 255, 80, ${0.22 + pulse * 0.28})`, `rgba(0, 255, 80, ${0.66 + pulse * 0.34})`, 4);
+                    vrHudCtx.restore();
+                }
+
+                vrHudCtx.fillStyle = '#ff0000';
+                enemies.forEach(e => {
+                    const p = worldToMini(e.mesh.position.x, e.mesh.position.z);
+                    vrHudCtx.fillRect(p.x - 3, p.y - 3, 6, 6);
+                });
+
+                vrHudCtx.fillStyle = '#00ff00';
+                pickups.forEach(pickup => {
+                    const p = worldToMini(pickup.mesh.position.x, pickup.mesh.position.z);
+                    vrHudCtx.fillRect(p.x - 2, p.y - 2, 4, 4);
+                });
+
+                // El jugador queda al centro. La flecha siempre apunta hacia arriba porque el mapa rota con su perspectiva.
+                vrHudCtx.fillStyle = '#ffffff';
+                vrHudCtx.beginPath();
+                vrHudCtx.moveTo(centerX, centerY - 7);
+                vrHudCtx.lineTo(centerX - 5, centerY + 5);
+                vrHudCtx.lineTo(centerX + 5, centerY + 5);
+                vrHudCtx.closePath();
+                vrHudCtx.fill();
+                vrHudCtx.restore();
+            }
+
+            function getNextCampaignDoor() {
+                const mission = missions[missionIndex];
+                if (!mission || !doors.length) return null;
+                const route = mission.route;
+                if (currentPath === route) return null;
+                if (!route.startsWith(currentPath === '/' ? '/' : currentPath + '/')) return null;
+
+                const currentParts = currentPath === '/' ? [] : currentPath.split('/').filter(Boolean);
+                const routeParts = route.split('/').filter(Boolean);
+                const nextParts = routeParts.slice(0, currentParts.length + 1);
+                const nextPath = '/' + nextParts.join('/');
+                return doors.find(door => door.targetPath === nextPath) || null;
+            }
+
+            function getRemainingEnemiesInRoom() {
+                if (!activeWave) return enemies.length;
+                return enemies.length + Math.max(0, activeWave.remainingToSpawn);
+            }
+
+            // --- MAPA / HABITACIONES ---
+            function getRoomState(path) {
+                if (!roomStates.has(path)) {
+                    roomStates.set(path, { cleared: false, visited: false, started: false });
+                }
+                return roomStates.get(path);
+            }
+
+            function loadDirectory(path) {
+                currentPath = path;
+                activeWave = null;
+                pendingWaveAfterUpgrade = false;
+
+                walls.forEach(w => scene.remove(w.mesh));
+                enemies.forEach(e => scene.remove(e.mesh));
+                dyingEnemies.forEach(e => scene.remove(e.mesh));
+                lasers.forEach(l => scene.remove(l.mesh));
+                pickups.forEach(p => scene.remove(p.mesh));
+                doors.forEach(d => scene.remove(d.mesh));
+
+                walls = [];
+                wallMeshes = [];
+                doors = [];
+                enemies = [];
+                dyingEnemies = [];
+                lasers = [];
+                pickups = [];
+                mapGrid = [];
+
+                generateGrid();
+                createDirectoryDoors(path);
+                buildWalls();
+
+                const cx = Math.floor(GRID_SIZE / 2);
+                const cz = Math.floor(GRID_SIZE / 2);
+                playerDolly.position.set(cx * TILE_SIZE, 0, cz * TILE_SIZE);
+
+                const state = getRoomState(path);
+                state.visited = true;
+
+                const mission = missions[missionIndex];
+                const isObjectiveRoom = mission && path === mission.route;
+                const needsUpgrade = isObjectiveRoom && !claimedUpgrades.has(mission.unlock);
+
+                if (!state.cleared && needsUpgrade) {
+                    pendingWaveAfterUpgrade = true;
+                    spawnWeaponUpgrade(mission.unlock);
+                    updateDoorLockStates();
+                    updateHUD('RECOGE EL UPGRADE ARC');
+                    notifyTecGPT(`Detecto firmas de tipo ${mission.unlock.toUpperCase()} en esta sala. Hay un upgrade ${mission.label} cerca: recógelo antes de aguantar la oleada.`);
+                } else if (!state.cleared) {
+                    startRoomWave(path);
+                } else {
+                    updateDoorLockStates();
+                    updateHUD(`> cd ${path}`);
+                }
+
+                nextRandomSupplyTime = clock.getElapsedTime() + 12;
+            }
+
+            function generateGrid() {
+                for (let z = 0; z < GRID_SIZE; z++) {
+                    const row = [];
+                    for (let x = 0; x < GRID_SIZE; x++) {
+                        if (z === 0 || z === GRID_SIZE - 1 || x === 0 || x === GRID_SIZE - 1) {
+                            row.push(1);
+                        } else if (x > 2 && x < GRID_SIZE - 3 && z > 2 && z < GRID_SIZE - 3) {
+                            row.push(Math.random() > 0.88 ? 1 : 0);
+                        } else {
+                            row.push(0);
+                        }
+                    }
+                    mapGrid.push(row);
+                }
+
+                const cx = Math.floor(GRID_SIZE / 2);
+                const cz = Math.floor(GRID_SIZE / 2);
+                for (let dz = -2; dz <= 2; dz++) {
+                    for (let dx = -2; dx <= 2; dx++) {
+                        mapGrid[cz + dz][cx + dx] = 0;
+                    }
+                }
+                // Carriles principales más limpios: reducen que la IA se atore en esquinas.
+                for (let i = 1; i < GRID_SIZE - 1; i++) {
+                    mapGrid[cz][i] = 0;
+                    mapGrid[i][cx] = 0;
+                }
+            }
+
+            function createDirectoryDoors(path) {
+                const cx = Math.floor(GRID_SIZE / 2);
+                const cz = Math.floor(GRID_SIZE / 2);
+                const parentDir = getParentDir(path);
+                const childrenDirs = fsTree[path] || [];
+
+                if (parentDir) {
+                    createDoor(cx, GRID_SIZE - 1, parentDir, '..', '#ff3333', true);
+                } else {
+                    mapGrid[GRID_SIZE - 1][cx] = 1;
+                }
+
+                const spots = [
+                    { x: cx, z: 0 },
+                    { x: 0, z: cz },
+                    { x: GRID_SIZE - 1, z: cz },
+                    { x: cx - 3, z: 0 },
+                    { x: cx + 3, z: GRID_SIZE - 1 }
+                ];
+
+                childrenDirs.forEach((child, i) => {
+                    if (i >= spots.length) return;
+                    const target = path === '/' ? `/${child}` : `${path}/${child}`;
+                    createDoor(spots[i].x, spots[i].z, target, child, '#ffff00', false);
+                });
+
+                updateDoorLockStates();
+            }
+
+            function getParentDir(path) {
+                if (path === '/') return null;
+                const idx = path.lastIndexOf('/');
+                return idx <= 0 ? '/' : path.substring(0, idx);
+            }
+
+            function createDoor(gx, gz, targetPath, label, color, isParentDoor = false) {
+                mapGrid[gz][gx] = 2;
+                if (gz === 0 && mapGrid[gz + 1]) mapGrid[gz + 1][gx] = 0;
+                if (gz === GRID_SIZE - 1 && mapGrid[gz - 1]) mapGrid[gz - 1][gx] = 0;
+                if (gx === 0 && mapGrid[gz]) mapGrid[gz][gx + 1] = 0;
+                if (gx === GRID_SIZE - 1 && mapGrid[gz]) mapGrid[gz][gx - 1] = 0;
+
+                const doorGeo = new THREE.BoxGeometry(TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                const mesh = new THREE.Mesh(doorGeo, new THREE.MeshBasicMaterial({ map: makeDoorTexture(label, color, false, false) }));
+                mesh.position.set(gx * TILE_SIZE, TILE_SIZE / 2, gz * TILE_SIZE);
+                scene.add(mesh);
+
+                doors.push({
+                    mesh,
+                    label,
+                    targetPath,
+                    color,
+                    isParentDoor,
+                    locked: true,
+                    routeLocked: false,
+                    roomLocked: true,
+                    box: new THREE.Box3().setFromObject(mesh)
+                });
+            }
+
+            function updateDoorLockStates() {
+                const roomCleared = getRoomState(currentPath).cleared;
+                doors.forEach(door => {
+                    door.roomLocked = !roomCleared;
+                    door.routeLocked = !door.isParentDoor && !isPathAccessible(door.targetPath);
+                    door.locked = door.roomLocked || door.routeLocked;
+                    const tex = makeDoorTexture(door.label, door.color, door.locked, door.routeLocked);
+                    door.mesh.material.map = tex;
+                    door.mesh.material.needsUpdate = true;
+                    door.box.setFromObject(door.mesh);
+                });
+            }
+
+            function makeDoorTexture(label, color, locked, routeLocked) {
+                const canvas = document.createElement('canvas');
+                canvas.width = 512;
+                canvas.height = 512;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = locked ? '#220000' : '#002200';
+                ctx.fillRect(0, 0, 512, 512);
+                ctx.strokeStyle = locked ? '#ff3333' : color;
+                ctx.lineWidth = 20;
+                ctx.strokeRect(0, 0, 512, 512);
+                ctx.fillStyle = locked ? '#ff5555' : color;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.font = 'bold 54px Courier New';
+
+                if (locked) {
+                    ctx.fillText(routeLocked ? 'RUTA' : 'OLEADA', 256, 208);
+                    ctx.fillText('BLOQUEADA', 256, 288);
+                } else {
+                    ctx.fillText('cd', 256, 196);
+                    ctx.font = 'bold 48px Courier New';
+                    ctx.fillText(label, 256, 292);
+                }
+                return new THREE.CanvasTexture(canvas);
+            }
+
+            function isPathAccessible(path) {
+                if (path === '/') return true;
+                if (getParentDir(currentPath) === path) return true;
+
+                const accessible = new Set(['/']);
+                for (let i = 0; i <= missionIndex && i < missions.length; i++) {
+                    addAncestors(accessible, missions[i].route);
+                }
+                return accessible.has(path);
+            }
+
+            function addAncestors(set, path) {
+                const parts = path.split('/').filter(Boolean);
+                let current = '';
+                for (const part of parts) {
+                    current += '/' + part;
+                    set.add(current);
+                }
+            }
+
+            function buildWalls() {
+                const wallGeo = new THREE.BoxGeometry(TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                const wireMat = new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true });
+                const solidMat = new THREE.MeshLambertMaterial({ color: 0x002200 });
+
+                for (let z = 0; z < GRID_SIZE; z++) {
+                    for (let x = 0; x < GRID_SIZE; x++) {
+                        if (mapGrid[z][x] === 1) {
+                            const mesh = new THREE.Mesh(wallGeo, solidMat);
+                            mesh.add(new THREE.Mesh(wallGeo, wireMat));
+                            mesh.position.set(x * TILE_SIZE, TILE_SIZE / 2, z * TILE_SIZE);
+                            scene.add(mesh);
+                            walls.push({ mesh, box: new THREE.Box3().setFromObject(mesh) });
+                            wallMeshes.push(mesh);
+                        }
+                    }
+                }
+            }
+
+            // --- OLEADAS ---
+            function startRoomWave(path) {
+                const config = getWaveConfig(path);
+                const now = clock.getElapsedTime();
+                const scaledTotal = Math.max(1, Math.round(config.total * ENEMY_COUNT_MULTIPLIER));
+                activeWave = {
+                    total: scaledTotal,
+                    remainingToSpawn: scaledTotal,
+                    dead: 0,
+                    config,
+                    nextSpawnTime: now + 0.8,
+                    spawnRate: config.spawnRate,
+                    maxAlive: Math.max(1, Math.round(config.maxAlive * ENEMY_COUNT_MULTIPLIER))
+                };
+                getRoomState(path).started = true;
+                updateDoorLockStates();
+                if (path !== '/') notifyTecGPT('¡Preparate, ahí vienen!');
+                updateHUD('OLEADA INICIADA');
+            }
+
+            function getWaveConfig(path) {
+                const depth = Math.max(0, path.split('/').filter(Boolean).length);
+                const baseDifficulty = 1 + missionIndex * 0.45 + depth * 0.28 + score * 0.015;
+                const currentMission = missions[missionIndex];
+
+                if (path === '/') {
+                    return {
+                        total: 7,
+                        types: ['int'],
+                        spawnRate: 0.92,
+                        maxAlive: 3,
+                        difficulty: 1,
+                        bossChance: 0.06
+                    };
+                }
+
+                if (currentMission && path === currentMission.route) {
+                    if (currentMission.unlock === 'auto') {
+                        return {
+                            total: 22,
+                            types: ['int', 'float', 'string', 'bool'],
+                            spawnRate: 0.60,
+                            maxAlive: 7,
+                            difficulty: baseDifficulty + 1.1,
+                            finalHorde: true,
+                            bossChance: 0.14
+                        };
+                    }
+                    return {
+                        total: 7 + missionIndex * 3,
+                        types: [currentMission.unlock],
+                        spawnRate: Math.max(0.52, 0.82 - missionIndex * 0.07),
+                        maxAlive: 4 + missionIndex,
+                        difficulty: baseDifficulty + 0.8,
+                        objectiveType: currentMission.unlock,
+                        bossChance: 0.11 + missionIndex * 0.025
+                    };
+                }
+
+                const availableTypes = unlockedWeapons.filter(t => t !== 'auto');
+                if (!availableTypes.includes('int')) availableTypes.unshift('int');
+
+                if (missionIndex === 0) {
+                    return {
+                        total: 5 + depth,
+                        types: ['int'],
+                        spawnRate: 0.86,
+                        maxAlive: 3 + Math.min(2, depth),
+                        difficulty: baseDifficulty,
+                        bossChance: 0.07
+                    };
+                }
+
+                if (missionIndex === 1) {
+                    return {
+                        total: 6 + depth,
+                        types: availableTypes.filter(t => ['int', 'float'].includes(t)),
+                        spawnRate: 0.76,
+                        maxAlive: 4,
+                        difficulty: baseDifficulty,
+                        bossChance: 0.09
+                    };
+                }
+
+                if (missionIndex === 2) {
+                    return {
+                        total: 7 + depth,
+                        types: availableTypes.filter(t => ['int', 'float', 'string'].includes(t)),
+                        spawnRate: 0.70,
+                        maxAlive: 5,
+                        difficulty: baseDifficulty,
+                        bossChance: 0.10
+                    };
+                }
+
+                return {
+                    total: 8 + depth,
+                    types: availableTypes.filter(t => ['int', 'float', 'string', 'bool'].includes(t)),
+                    spawnRate: 0.66,
+                    maxAlive: 6,
+                    difficulty: baseDifficulty,
+                    bossChance: 0.12
+                };
+            }
+
+            function updateWaveSpawning() {
+                if (!activeWave || !isGameRunning) return;
+                const now = clock.getElapsedTime();
+
+                if (activeWave.remainingToSpawn > 0 && enemies.length < activeWave.maxAlive && now >= activeWave.nextSpawnTime) {
+                    spawnEnemy(activeWave.config);
+                    activeWave.remainingToSpawn--;
+                    activeWave.nextSpawnTime = now + activeWave.spawnRate * THREE.MathUtils.randFloat(0.72, 1.24);
+                }
+
+                if (activeWave.remainingToSpawn <= 0 && enemies.length === 0) {
+                    if (activeWave.config.finalHorde && !finalBossSpawned) {
+                        activeWave = null;
+                        updateHUD('RAÍZ DEL PROBLEMA DETECTADA');
+                        notifyTecGPT('La horda principal cayó, Boss. Ahora apareció el proceso raíz: Variable Overload. Tiene muchas referencias vivas y declarará más variables. Usa auto tipado.');
+                        spawnBoss();
+                    } else {
+                        clearCurrentRoom();
+                    }
+                }
+            }
+
+            function clearCurrentRoom() {
+                const state = getRoomState(currentPath);
+                if (state.cleared) return;
+                state.cleared = true;
+                activeWave = null;
+                pendingWaveAfterUpgrade = false;
+                updateDoorLockStates();
+                updateHUD('HABITACIÓN LIMPIA');
+                notifyTecGPT('Directorio limpio. Las puertas vuelven a estar disponibles.');
+
+                const mission = missions[missionIndex];
+                if (mission && currentPath === mission.route && mission.unlock !== 'auto') {
+                    missionIndex++;
+                    if (missions[missionIndex]) {
+                        notifyTecGPT(missions[missionIndex].intro);
+                    }
+                }
+            }
+
+            function createEnemyTexture(enemy, flash = false) {
+                const canvas = document.createElement('canvas');
+                canvas.width = 256;
+                canvas.height = 256;
+                const ctx = canvas.getContext('2d');
+                const color = weaponColors[enemy.type] || 0xff0000;
+                const colorCss = '#' + color.toString(16).padStart(6, '0');
+
+                ctx.fillStyle = enemy.isBoss ? '#111400' : '#001100';
+                ctx.fillRect(0, 0, 256, 256);
+                if (flash) {
+                    ctx.fillStyle = 'rgba(255, 0, 0, 0.72)';
+                    ctx.fillRect(0, 0, 256, 256);
+                }
+
+                ctx.strokeStyle = flash ? '#ff3333' : colorCss;
+                ctx.lineWidth = enemy.isBoss ? 14 : 10;
+                ctx.strokeRect(0, 0, 256, 256);
+
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillStyle = flash ? '#ffffff' : colorCss;
+
+                const hpText = formatEnemyHp(enemy);
+                if (enemy.type === 'int' || enemy.type === 'float') {
+                    ctx.font = enemy.type === 'float' ? 'bold 60px Courier New' : 'bold 74px Courier New';
+                    ctx.fillText(hpText, 128, enemy.isBoss ? 104 : 118);
+                    ctx.font = 'bold 24px Courier New';
+                    ctx.fillText(enemy.type.toUpperCase(), 128, enemy.isBoss ? 165 : 188);
+                } else if (enemy.type === 'string') {
+                    const text = `"${enemy.stringValue || ''}"`;
+                    ctx.font = text.length > 9 ? 'bold 30px Courier New' : 'bold 42px Courier New';
+                    ctx.fillText(text, 128, 94);
+                    ctx.font = 'bold 32px Courier New';
+                    ctx.fillText(`LEN ${hpText}`, 128, 154);
+                } else {
+                    ctx.font = enemy.label && enemy.label.length > 6 ? 'bold 34px Courier New' : 'bold 46px Courier New';
+                    ctx.fillText(enemy.label, 128, 96);
+                    ctx.font = 'bold 32px Courier New';
+                    ctx.fillText(`HP ${hpText}`, 128, 154);
+                }
+
+                if (enemy.isBoss) {
+                    ctx.font = 'bold 24px Courier New';
+                    ctx.fillStyle = flash ? '#ffffff' : '#ffcc00';
+                    ctx.fillText('BOSS', 128, 212);
+                } else if (enemy.floating) {
+                    ctx.font = 'bold 22px Courier New';
+                    ctx.fillStyle = flash ? '#ffffff' : colorCss;
+                    ctx.fillText('FLOATING', 128, 222);
+                }
+
+                return new THREE.CanvasTexture(canvas);
+            }
+
+            function formatEnemyHp(enemy) {
+                if (enemy.type === 'float') return Math.max(0, enemy.hp).toFixed(2);
+                if (enemy.type === 'string') return String(Math.max(0, enemy.stringValue ? enemy.stringValue.length : Math.ceil(enemy.hp)));
+                return String(Math.max(0, Math.ceil(enemy.hp)));
+            }
+
+            function makeStringValue(difficulty, isClassBoss = false) {
+                const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+                const diff = Math.max(1, difficulty || 1);
+                const len = Math.max(3, Math.round((isClassBoss ? 8 : 3) + diff * (isClassBoss ? 1.6 : 1.1) + Math.random() * (isClassBoss ? 5 : 3)));
+                let out = '';
+                for (let i = 0; i < len; i++) out += alphabet[Math.floor(Math.random() * alphabet.length)];
+                return out;
+            }
+
+            function makeEnemyHp(type, difficulty, isClassBoss = false) {
+                const diff = Math.max(1, difficulty || 1);
+                const bossMul = isClassBoss ? 3.2 : 1;
+                if (type === 'float') {
+                    const hp = (1 + (diff - 1) * 0.85 + Math.random() * (0.45 + diff * 0.18)) * bossMul;
+                    return Number(Math.max(0.25, hp).toFixed(2));
+                }
+                if (type === 'int') {
+                    return Math.max(1, Math.round((1 + (diff - 1) * 1.25 + Math.random() * Math.max(0.35, diff * 0.75)) * bossMul));
+                }
+                if (type === 'bool') return Math.max(1, Math.round((1 + (diff - 1) * 1.1 + Math.random() * 1.2) * bossMul));
+                if (type === 'string') return Math.max(2, Math.round((2 + (diff - 1) * 1.4 + Math.random() * 1.8) * bossMul));
+                return Math.max(1, Math.round(diff * bossMul));
+            }
+
+            function refreshEnemyTexture(enemy, flash = false) {
+                if (!enemy || !enemy.material || enemy.isFinalBoss) return;
+                const oldMap = enemy.material.map;
+                enemy.material.map = createEnemyTexture(enemy, flash);
+                enemy.material.needsUpdate = true;
+                if (oldMap && oldMap.dispose) oldMap.dispose();
+            }
+
+            function getSpawnableTypes(types) {
+                const allowed = (types || ['int']).filter(type => {
+                    if (type === 'int') return true;
+                    return unlockedWeapons.includes(type);
+                });
+                return allowed.length ? allowed : ['int'];
+            }
+
+            function spawnEnemy(config, forcedType = null, forcedPosition = null) {
+                const pool = forcedType ? [forcedType] : getSpawnableTypes(config.types);
+                const actualType = choose(pool);
+                const isClassBoss = !forcedPosition && !config.finalHorde && Math.random() < (config.bossChance || 0);
+                const stringValue = actualType === 'string' ? makeStringValue(config.difficulty || 1, isClassBoss) : null;
+                const label = actualType === 'string'
+                    ? `"${stringValue}"`
+                    : actualType === 'bool'
+                        ? choose(typeLabels.bool)
+                        : actualType.toUpperCase();
+
+                const spot = forcedPosition || getRandomSpawnSpot();
+                if (!spot) return;
+
+                const hp = actualType === 'string' ? stringValue.length : makeEnemyHp(actualType, config.difficulty || 1, isClassBoss);
+                const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+                const floating = actualType === 'float';
+                const baseSize = actualType === 'string' ? 3.6 : 3.1;
+                const size = isClassBoss ? 5.2 : baseSize;
+                const mesh = new THREE.Mesh(new THREE.BoxGeometry(size, size, size), material);
+                const y = floating ? (isClassBoss ? 4.8 : 3.3 + Math.random() * 1.2) : size / 2;
+                mesh.position.set(spot.x * TILE_SIZE, y, spot.z * TILE_SIZE);
+
+                const enemy = {
+                    mesh,
+                    material,
+                    type: actualType,
+                    label,
+                    stringValue,
+                    hp,
+                    maxHp: hp,
+                    floating,
+                    bobOffset: Math.random() * Math.PI * 2,
+                    box: new THREE.Box3().setFromObject(mesh),
+                    speed: (floating ? 4.7 : 4.0) + Math.min(2.5, score * 0.04) + (config.difficulty || 1) * 0.2 - (isClassBoss ? 0.65 : 0),
+                    attackCooldown: 0,
+                    spawnAddsCooldown: 0,
+                    fractionalDamageBank: 0,
+                    isBoss: isClassBoss,
+                    isFinalBoss: false
+                };
+
+                material.map = createEnemyTexture(enemy);
+                material.needsUpdate = true;
+                scene.add(mesh);
+                enemies.push(enemy);
+            }
+
+            function spawnBoss() {
+                finalBossSpawned = true;
+                const cx = Math.floor(GRID_SIZE / 2);
+                const spot = { x: cx, z: 2 };
+                const canvas = document.createElement('canvas');
+                canvas.width = 512;
+                canvas.height = 512;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#210000';
+                ctx.fillRect(0, 0, 512, 512);
+                ctx.strokeStyle = '#ff0000';
+                ctx.lineWidth = 20;
+                ctx.strokeRect(0, 0, 512, 512);
+                ctx.fillStyle = '#ff4444';
+                ctx.font = 'bold 56px Courier New';
+                ctx.textAlign = 'center';
+                ctx.fillText('VARIABLE', 256, 210);
+                ctx.fillText('OVERLOAD', 256, 292);
+                ctx.font = 'bold 32px Courier New';
+                ctx.fillText('ROOT PROCESS', 256, 366);
+
+                const material = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(canvas), color: 0xffffff });
+                const mesh = new THREE.Mesh(new THREE.BoxGeometry(7, 7, 7), material);
+                mesh.position.set(spot.x * TILE_SIZE, 3.5, spot.z * TILE_SIZE);
+                scene.add(mesh);
+
+                enemies.push({
+                    mesh,
+                    material,
+                    type: 'boss',
+                    label: 'Variable Overload',
+                    hp: 120,
+                    maxHp: 120,
+                    floating: false,
+                    bobOffset: 0,
+                    box: new THREE.Box3().setFromObject(mesh),
+                    speed: 2.3,
+                    attackCooldown: 0,
+                    spawnAddsCooldown: 4,
+                    isBoss: true,
+                    isFinalBoss: true
+                });
+            }
+
+            function getRandomSpawnSpot() {
+                const validSpots = [];
+                const px = Math.floor(playerDolly.position.x / TILE_SIZE);
+                const pz = Math.floor(playerDolly.position.z / TILE_SIZE);
+
+                for (let z = 1; z < GRID_SIZE - 1; z++) {
+                    for (let x = 1; x < GRID_SIZE - 1; x++) {
+                        if (mapGrid[z][x] === 0 && Math.abs(x - px) + Math.abs(z - pz) > 6) {
+                            validSpots.push({ x, z });
+                        }
+                    }
+                }
+                return validSpots.length ? choose(validSpots) : null;
+            }
+
+            function choose(arr) {
+                return arr[Math.floor(Math.random() * arr.length)];
+            }
+
+            // --- PICKUPS / DROPS ---
+            function spawnWeaponUpgrade(type) {
+                const cx = Math.floor(GRID_SIZE / 2);
+                const cz = Math.floor(GRID_SIZE / 2) + 2;
+                spawnPickup('weapon', new THREE.Vector3(cx * TILE_SIZE, 1.5, cz * TILE_SIZE), type);
+            }
+
+            function maybeDropPickup(position) {
+                position.y = 1.1;
+                const roll = Math.random();
+                if (roll < 0.42) spawnPickup('ammo', position, null);
+                else if (roll < 0.62) spawnPickup('health', position, null);
+                else if (roll < 0.74) spawnPickup('rapid', position, null);
+            }
+
+            function spawnRandomSupply() {
+                const spot = getRandomOpenSpotNearCenter();
+                if (!spot) return;
+                const type = Math.random() < 0.75 ? 'ammo' : (Math.random() < 0.6 ? 'health' : 'rapid');
+                spawnPickup(type, new THREE.Vector3(spot.x * TILE_SIZE, 1.1, spot.z * TILE_SIZE), null);
+                if (!resourcesHintShown) {
+                    resourcesHintShown = true;
+                    notifyTecGPT('Detecté recursos libres en esta habitación. Revisa el minimapa: aparecen como puntos verdes.');
+                }
+            }
+
+            function getRandomOpenSpotNearCenter() {
+                const candidates = [];
+                for (let z = 2; z < GRID_SIZE - 2; z++) {
+                    for (let x = 2; x < GRID_SIZE - 2; x++) {
+                        if (mapGrid[z][x] === 0) candidates.push({ x, z });
+                    }
+                }
+                return candidates.length ? choose(candidates) : null;
+            }
+
+            function spawnPickup(kind, position, payload) {
+                const group = new THREE.Group();
+                const color = kind === 'ammo' ? 0x00ff00 : kind === 'health' ? 0xff3333 : kind === 'rapid' ? 0xffffff : weaponColors[payload];
+                const mat = new THREE.MeshLambertMaterial({
+                    color,
+                    emissive: color,
+                    emissiveIntensity: 0.6,
+                    wireframe: kind !== 'weapon'
+                });
+                const mesh = kind === 'weapon'
+                    ? new THREE.Mesh(new THREE.OctahedronGeometry(1.4, 0), mat)
+                    : new THREE.Mesh(new THREE.IcosahedronGeometry(0.75, 0), mat);
+                group.add(mesh);
+
+                const labelText = kind === 'weapon' ? weaponNames[payload] : kind.toUpperCase();
+                const label = createFloatingLabel(labelText, color);
+                label.position.set(0, kind === 'weapon' ? 1.8 : 1.35, 0);
+                group.add(label);
+
+                position.y = kind === 'weapon' ? position.y : 1.1;
+                group.position.copy(position);
+                scene.add(group);
+                pickups.push({ mesh: group, core: mesh, label, kind, payload, box: new THREE.Box3().setFromObject(group) });
+            }
+
+            function createFloatingLabel(text, color) {
+                const canvas = document.createElement('canvas');
+                canvas.width = 512;
+                canvas.height = 128;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = 'rgba(0,0,0,0.55)';
+                ctx.fillRect(0, 0, 512, 128);
+                ctx.strokeStyle = '#' + color.toString(16).padStart(6, '0');
+                ctx.lineWidth = 6;
+                ctx.strokeRect(4, 4, 504, 120);
+                ctx.fillStyle = '#' + color.toString(16).padStart(6, '0');
+                ctx.font = 'bold 42px Courier New';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(text, 256, 66);
+
+                const texture = new THREE.CanvasTexture(canvas);
+                const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthTest: false });
+                const plane = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 1.1), material);
+                plane.renderOrder = 998;
+                return plane;
+            }
+
+            function updatePickups(delta) {
+                for (let i = pickups.length - 1; i >= 0; i--) {
+                    const p = pickups[i];
+                    p.mesh.rotation.y += delta * 1.8;
+                    p.core.rotation.x += delta * 2.2;
+                    p.label.lookAt(camera.getWorldPosition(new THREE.Vector3()));
+                    p.box.setFromObject(p.mesh);
+
+                    if (p.mesh.position.distanceTo(playerDolly.position) < 3.0) {
+                        collectPickup(p);
+                        scene.remove(p.mesh);
+                        pickups.splice(i, 1);
+                    }
+                }
+
+                const now = clock.getElapsedTime();
+                if (activeWave && now > nextRandomSupplyTime && pickups.filter(p => p.kind !== 'weapon').length < 3) {
+                    spawnRandomSupply();
+                    nextRandomSupplyTime = now + THREE.MathUtils.randFloat(18, 28);
+                }
+            }
+
+            function collectPickup(pickup) {
+                if (pickup.kind === 'ammo') {
+                    clipAmmo = Math.min(MAX_AMMO, clipAmmo + 24);
+                    playPowerupSound();
+                    updateHUD('+24 BALAS');
+                } else if (pickup.kind === 'health') {
+                    health = Math.min(100, health + 24);
+                    playCureSound();
+                    updateHUD('+24 HP');
+                } else if (pickup.kind === 'rapid') {
+                    rapidFireUntil = Math.max(rapidFireUntil, clock.getElapsedTime() + 12);
+                    playPowerupSound();
+                    updateHUD('RAPID FIRE x12s');
+                } else if (pickup.kind === 'weapon') {
+                    playPowerupSound();
+                    const type = pickup.payload;
+                    if (!unlockedWeapons.includes(type)) unlockedWeapons.push(type);
+                    checkpointWeaponType = type;
+                    claimedUpgrades.add(type);
+                    currentWeaponIndex = unlockedWeapons.indexOf(type);
+                    updateWeaponMaterial();
+                    updateHUD(`${weaponNames[type]} DESBLOQUEADA`);
+
+                    const mission = missions.find(m => m.unlock === type);
+                    notifyTecGPT(mission ? mission.onUpgrade : `${weaponNames[type]} desbloqueada.`);
+
+                    if (pendingWaveAfterUpgrade && missions[missionIndex] && missions[missionIndex].unlock === type) {
+                        pendingWaveAfterUpgrade = false;
+                        startRoomWave(currentPath);
+                    }
+                }
+            }
+
+            // --- ARMAS ---
+            function createGunMesh() {
+                const mesh = new THREE.Group();
+                const gunDarkMat = new THREE.MeshLambertMaterial({ color: 0x111111 });
+
+                const body = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.1, 0.3), gunDarkMat);
+                const core = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.03, 0.15), weaponMat);
+                core.position.set(0, 0.06, -0.05);
+                mesh.add(body);
+                mesh.add(core);
+
+                const laserGeo = new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(0, 0.06, 0),
+                    new THREE.Vector3(0, 0.06, -50)
+                ]);
+                const laserMat = new THREE.LineBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.5 });
+                const aimLine = new THREE.Line(laserGeo, laserMat);
+                aimLine.name = 'aimLine';
+                mesh.add(aimLine);
+
+                mesh.position.set(0, -0.05, -0.1);
+                mesh.rotation.x = -Math.PI / 8;
+                return mesh;
+            }
+
+            function getCurrentWeaponType() {
+                return unlockedWeapons[currentWeaponIndex] || 'int';
+            }
+
+            function updateWeaponMaterial() {
+                const type = getCurrentWeaponType();
+                const hex = weaponColors[type] || weaponColors.int;
+                if (weaponMat) {
+                    weaponMat.color.setHex(hex);
+                    weaponMat.emissive.setHex(hex);
+                }
+                [leftWeaponMesh, rightWeaponMesh].forEach(mesh => {
+                    if (!mesh) return;
+                    const aimLine = mesh.getObjectByName('aimLine');
+                    if (aimLine) aimLine.material.color.setHex(hex);
+                });
+            }
+
+            function switchWeapon(step = 1) {
+                if (unlockedWeapons.length <= 1) {
+                    updateHUD('SOLO ARC-INT DISPONIBLE');
+                    return;
+                }
+                currentWeaponIndex = (currentWeaponIndex + step + unlockedWeapons.length) % unlockedWeapons.length;
+                updateWeaponMaterial();
+                updateHUD(`MODO: ${weaponNames[getCurrentWeaponType()]}`);
+            }
+
+            function fireWeapon(ctrl, wpnMesh) {
+                if (!ctrl || !wpnMesh) return;
+
+                const now = clock.getElapsedTime();
+                const fireDelay = now < rapidFireUntil ? 0.11 : 0.24;
+                if (ctrl.userData.nextShot && now < ctrl.userData.nextShot) return;
+                ctrl.userData.nextShot = now + fireDelay;
+
+                const matrix = new THREE.Matrix4().extractRotation(wpnMesh.matrixWorld);
+                const direction = new THREE.Vector3(0, 0, -1).applyMatrix4(matrix).normalize();
+                const startPos = new THREE.Vector3();
+                wpnMesh.getWorldPosition(startPos);
+
+                if (isGameOver && gameOverMesh) {
+                    shootRestartRay(startPos, direction);
+                    return;
+                }
+
+                if (!isGameRunning) return;
+
+                if (clipAmmo <= 0) {
+                    updateHUD('SIN MUNICIÓN');
+                    playErrorSound();
+                    return;
+                }
+
+                clipAmmo--;
+                updateHUD();
+                playShootSound();
+
+                const type = getCurrentWeaponType();
+                const laser = new THREE.Mesh(
+                    new THREE.CylinderGeometry(type === 'auto' ? 0.075 : 0.05, type === 'auto' ? 0.075 : 0.05, 1.6, 8).rotateX(Math.PI / 2),
+                    new THREE.MeshBasicMaterial({ color: weaponColors[type] || 0x00ff00 })
+                );
+                laser.position.copy(startPos);
+                laser.lookAt(startPos.clone().add(direction));
+                scene.add(laser);
+
+                lasers.push({ mesh: laser, dir: direction, speed: 101.4, type, box: new THREE.Box3() });
+            }
+
+            function shootRestartRay(startPos, direction) {
+                const tempLaser = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.02, 0.02, 5, 8).rotateX(Math.PI / 2),
+                    new THREE.MeshBasicMaterial({ color: 0xff0000 })
+                );
+                tempLaser.position.copy(startPos);
+                tempLaser.lookAt(startPos.clone().add(direction));
+                scene.add(tempLaser);
+                setTimeout(() => scene.remove(tempLaser), 150);
+                playShootSound();
+
+                const ray = new THREE.Raycaster(startPos, direction);
+                const hits = ray.intersectObject(gameOverMesh);
+                if (hits.length > 0) startGame();
+            }
+
+            function updateLasers(delta) {
+                for (let i = lasers.length - 1; i >= 0; i--) {
+                    const l = lasers[i];
+                    l.mesh.position.addScaledVector(l.dir, l.speed * delta);
+                    l.box.setFromObject(l.mesh);
+
+                    let hit = walls.some(w => l.box.intersectsBox(w.box));
+
+                    if (!hit) {
+                        for (let j = enemies.length - 1; j >= 0; j--) {
+                            const e = enemies[j];
+                            if (l.box.intersectsBox(e.box)) {
+                                hit = true;
+                                damageEnemy(e, j, l.type);
+                                break;
+                            }
+                        }
+                    }
+
+                    if (hit || l.mesh.position.distanceTo(playerDolly.position) > 120) {
+                        scene.remove(l.mesh);
+                        lasers.splice(i, 1);
+                    }
+                }
+            }
+
+            function canDamageEnemy(weaponType, enemy) {
+                if (enemy.isFinalBoss) return weaponType === 'auto';
+                return true;
+            }
+
+            function getDamage(weaponType, enemy) {
+                if (enemy.isFinalBoss) return weaponType === 'auto' ? 6 : 0;
+                if (weaponType === 'auto') return 4;
+                return weaponType === enemy.type ? 1 : 0.10;
+            }
+
+            function applyTypedDamage(enemy, damage, weaponType) {
+                const exactTypeHit = weaponType === enemy.type || weaponType === 'auto';
+
+                if (enemy.type === 'string') {
+                    if (exactTypeHit) {
+                        const chars = Math.max(1, Math.round(damage));
+                        enemy.stringValue = (enemy.stringValue || '').slice(0, Math.max(0, (enemy.stringValue || '').length - chars));
+                    } else {
+                        enemy.fractionalDamageBank = (enemy.fractionalDamageBank || 0) + damage;
+                        const chars = Math.floor(enemy.fractionalDamageBank + 1e-9);
+                        if (chars > 0) {
+                            enemy.stringValue = (enemy.stringValue || '').slice(0, Math.max(0, (enemy.stringValue || '').length - chars));
+                            enemy.fractionalDamageBank -= chars;
+                        }
+                    }
+                    enemy.label = `"${enemy.stringValue || ''}"`;
+                    enemy.hp = enemy.stringValue ? enemy.stringValue.length : 0;
+                    return;
+                }
+
+                if (enemy.type === 'float') {
+                    enemy.hp = Number(Math.max(0, enemy.hp - damage).toFixed(2));
+                    return;
+                }
+
+                if (enemy.type === 'int') {
+                    if (exactTypeHit) {
+                        enemy.hp = Math.max(0, Math.floor(enemy.hp - Math.round(damage)));
+                    } else {
+                        enemy.fractionalDamageBank = (enemy.fractionalDamageBank || 0) + damage;
+                        const wholeDamage = Math.floor(enemy.fractionalDamageBank + 1e-9);
+                        if (wholeDamage > 0) {
+                            enemy.hp = Math.max(0, enemy.hp - wholeDamage);
+                            enemy.fractionalDamageBank -= wholeDamage;
+                        }
+                    }
+                    return;
+                }
+
+                enemy.hp = Number(Math.max(0, enemy.hp - damage).toFixed(2));
+            }
+
+            function damageEnemy(enemy, enemyIndex, weaponType) {
+                if (!canDamageEnemy(weaponType, enemy)) {
+                    updateHUD('ERROR DE TIPO');
+                    playErrorSound();
+                    return;
+                }
+
+                const damage = getDamage(weaponType, enemy);
+                applyTypedDamage(enemy, damage, weaponType);
+
+                refreshEnemyTexture(enemy, true);
+                enemy.material.color.setHex(0xff4444);
+                setTimeout(() => {
+                    if (!enemy.material) return;
+                    enemy.material.color.setHex(0xffffff);
+                    refreshEnemyTexture(enemy, false);
+                }, 95);
+
+                if (enemy.hp <= 0) killEnemy(enemy, enemyIndex);
+                else if (enemy.isFinalBoss) updateHUD(`BOSS HP: ${Math.ceil(enemy.hp)}/${enemy.maxHp}`);
+            }
+
+            function killEnemy(enemy, enemyIndex) {
+                enemy.deathTimer = 1.0;
+                enemy.material.color.setHex(0xff0000);
+                dyingEnemies.push(enemy);
+                enemies.splice(enemyIndex, 1);
+                score++;
+                playEnemyKillSound();
+
+                if (activeWave) activeWave.dead++;
+                if (!enemy.isFinalBoss) {
+                    const dropPosition = enemy.mesh.position.clone();
+                    dropPosition.y = 1.1;
+                    maybeDropPickup(dropPosition);
+                }
+
+                if (enemy.isFinalBoss) {
+                    finalBossDefeated = true;
+                    finishGame();
+                }
+
+                updateHUD();
+            }
+
+            function updateDyingEnemies(delta) {
+                for (let i = dyingEnemies.length - 1; i >= 0; i--) {
+                    const e = dyingEnemies[i];
+                    e.deathTimer -= delta * 2;
+                    e.mesh.rotation.y += 15 * delta;
+                    e.mesh.rotation.x += 10 * delta;
+                    e.mesh.scale.setScalar(Math.max(0.01, e.deathTimer));
+                    if (e.deathTimer <= 0) {
+                        scene.remove(e.mesh);
+                        dyingEnemies.splice(i, 1);
+                    }
+                }
+            }
+
+            // --- ENEMIGOS / IA ---
+            function isWalkableCell(x, z) {
+                return x >= 0 && x < GRID_SIZE && z >= 0 && z < GRID_SIZE && mapGrid[z] && mapGrid[z][x] !== 1;
+            }
+
+            function updateFlowField(targetX, targetZ) {
+                for (let z = 0; z < GRID_SIZE; z++) {
+                    for (let x = 0; x < GRID_SIZE; x++) flowField[z][x] = 9999;
+                }
+                if (targetX < 0 || targetX >= GRID_SIZE || targetZ < 0 || targetZ >= GRID_SIZE) return;
+
+                const queue = [{ x: targetX, z: targetZ, dist: 0 }];
+                flowField[targetZ][targetX] = 0;
+                const dirs = [{ x: 0, z: -1 }, { x: 0, z: 1 }, { x: -1, z: 0 }, { x: 1, z: 0 }, { x: -1, z: -1 }, { x: 1, z: -1 }, { x: -1, z: 1 }, { x: 1, z: 1 }];
+
+                while (queue.length > 0) {
+                    const curr = queue.shift();
+                    for (const d of dirs) {
+                        const nx = curr.x + d.x;
+                        const nz = curr.z + d.z;
+                        if (!isWalkableCell(nx, nz)) continue;
+                        if (d.x !== 0 && d.z !== 0 && (!isWalkableCell(curr.x + d.x, curr.z) || !isWalkableCell(curr.x, curr.z + d.z))) continue;
+                        const cost = d.x !== 0 && d.z !== 0 ? 1.4 : 1;
+                        if (flowField[nz][nx] > curr.dist + cost) {
+                            flowField[nz][nx] = curr.dist + cost;
+                            queue.push({ x: nx, z: nz, dist: curr.dist + cost });
+                        }
+                    }
+                }
+            }
+
+            function updateEnemies(delta, time) {
+                for (let i = enemies.length - 1; i >= 0; i--) {
+                    const e = enemies[i];
+                    e.attackCooldown = Math.max(0, e.attackCooldown - delta);
+
+                    if (e.floating) {
+                        const targetY = e.isBoss ? 4.2 : 3.2;
+                        e.mesh.position.y = targetY + Math.sin(time * 2.2 + e.bobOffset) * (e.isBoss ? 0.45 : 0.65);
+                    }
+
+                    e.mesh.lookAt(playerDolly.position.x, e.mesh.position.y, playerDolly.position.z);
+
+                    if (e.isFinalBoss) {
+                        e.spawnAddsCooldown -= delta;
+                        if (e.spawnAddsCooldown <= 0 && enemies.length < 10) {
+                            for (let n = 0; n < 2; n++) {
+                                spawnEnemy({ types: ['int', 'float', 'string', 'bool'], difficulty: 1.7, bossChance: 0 }, choose(['int', 'float', 'string', 'bool']));
+                            }
+                            e.spawnAddsCooldown = THREE.MathUtils.randFloat(4.5, 7.0);
+                            notifyTecGPT('El virus invocó más variables. Mantén auto tipado activo y controla la horda.');
+                        }
+                    }
+
+                    const dirToPlayer = new THREE.Vector3().subVectors(playerDolly.position, e.mesh.position);
+                    const distToPlayer = dirToPlayer.length();
+                    maybeWarnEnemyBehind(e, distToPlayer, time);
+                    const directDir = dirToPlayer.clone();
+                    directDir.y = 0;
+                    if (directDir.length() > 0) directDir.normalize();
+
+                    const hasLOS = hasLineOfSightToPlayer(e, distToPlayer);
+                    const pathDir = getPathfindingDirection(e);
+                    const moved = moveEnemyWithSteering(e, directDir, pathDir, delta, hasLOS);
+
+                    if (!moved) {
+                        nudgeEnemyAwayFromWalls(e);
+                    }
+                    
+                    const attackRange = e.isFinalBoss ? 3.0 : (e.isBoss ? 6.0 : 3.6);
+                    
+                    if (distToPlayer < attackRange && e.attackCooldown <= 0 && isGameRunning) {
+                        const damage = e.isFinalBoss ? 24 : (e.isBoss ? 16 : 10 + missionIndex * 2);
+                        health -= damage;
+                        playPlayerDamageSound();
+                        e.attackCooldown = e.isFinalBoss ? 2.0 : (e.isBoss ? 1.2 : 0.8);
+
+                        if (health <= 0) {
+                            respawnAtCheckpoint();
+                        } else {
+                            updateHUD('¡SISTEMA DAÑADO!');
+                        }
+
+                        e.mesh.position.addScaledVector(directDir, -4.5);
+                        e.box.setFromObject(e.mesh);
+                    }
+                }
+            }
+
+            function maybeWarnEnemyBehind(enemy, distToPlayer, time) {
+                if (!isGameRunning || isGameOver || distToPlayer > 11 || distToPlayer < 3.8) return;
+                if (time - lastBehindWarningTime < 9.0) return;
+
+                const forward = new THREE.Vector3();
+                camera.getWorldDirection(forward);
+                forward.y = 0;
+                if (forward.lengthSq() < 0.01) return;
+                forward.normalize();
+
+                const toEnemy = new THREE.Vector3().subVectors(enemy.mesh.position, playerDolly.position);
+                toEnemy.y = 0;
+                if (toEnemy.lengthSq() < 0.01) return;
+                toEnemy.normalize();
+
+                if (forward.dot(toEnemy) < -0.58) {
+                    lastBehindWarningTime = time;
+                    notifyTecGPT('¡Boss, detrás de ti!');
+                }
+            }
+
+            function hasLineOfSightToPlayer(enemy, distToPlayer) {
+                if (distToPlayer > 42) return false;
+                const from = enemy.mesh.position.clone();
+                const to = playerDolly.position.clone();
+                to.y = from.y;
+                const direction = to.sub(from).normalize();
+                const ray = new THREE.Raycaster(from, direction, 0, distToPlayer);
+                return ray.intersectObjects(wallMeshes).length === 0;
+            }
+
+            function getPathfindingDirection(enemy) {
+                const ex = Math.floor(enemy.mesh.position.x / TILE_SIZE);
+                const ez = Math.floor(enemy.mesh.position.z / TILE_SIZE);
+                let bestDist = (flowField[ez] && flowField[ez][ex] !== undefined) ? flowField[ez][ex] : 9999;
+                let bestX = ex;
+                let bestZ = ez;
+                const dirs = [{ x: 0, z: -1 }, { x: 0, z: 1 }, { x: -1, z: 0 }, { x: 1, z: 0 }, { x: -1, z: -1 }, { x: 1, z: -1 }, { x: -1, z: 1 }, { x: 1, z: 1 }];
+
+                for (const d of dirs) {
+                    const nx = ex + d.x;
+                    const nz = ez + d.z;
+                    if (!isWalkableCell(nx, nz)) continue;
+                    if (d.x !== 0 && d.z !== 0 && (!isWalkableCell(ex + d.x, ez) || !isWalkableCell(ex, ez + d.z))) continue;
+                    if (flowField[nz][nx] < bestDist) {
+                        bestDist = flowField[nz][nx];
+                        bestX = nx;
+                        bestZ = nz;
+                    }
+                }
+
+                const targetPos = new THREE.Vector3(bestX * TILE_SIZE, enemy.mesh.position.y, bestZ * TILE_SIZE);
+                const dir = targetPos.sub(enemy.mesh.position);
+                dir.y = 0;
+                if (dir.length() > 0.05) dir.normalize();
+                return dir;
+            }
+
+            function moveEnemyWithSteering(enemy, directDir, pathDir, delta, hasLOS) {
+                const candidates = [];
+                const direct = directDir && directDir.lengthSq() > 0 ? directDir.clone().normalize() : null;
+                const path = pathDir && pathDir.lengthSq() > 0 ? pathDir.clone().normalize() : null;
+
+                if (hasLOS && direct) candidates.push(direct);
+                if (hasLOS && direct && path) candidates.push(direct.clone().multiplyScalar(0.72).add(path.clone().multiplyScalar(0.28)).normalize());
+                if (path) candidates.push(path);
+                if (direct) {
+                    const sideA = new THREE.Vector3(-direct.z, 0, direct.x).normalize();
+                    const sideB = new THREE.Vector3(direct.z, 0, -direct.x).normalize();
+                    candidates.push(direct.clone().multiplyScalar(0.65).add(sideA.multiplyScalar(0.35)).normalize());
+                    candidates.push(direct.clone().multiplyScalar(0.65).add(sideB.multiplyScalar(0.35)).normalize());
+                }
+                if (path) {
+                    candidates.push(new THREE.Vector3(-path.z, 0, path.x).normalize());
+                    candidates.push(new THREE.Vector3(path.z, 0, -path.x).normalize());
+                }
+
+                const before = enemy.mesh.position.clone();
+                const beforeDist = before.distanceTo(playerDolly.position);
+                for (const candidate of candidates) {
+                    if (!candidate || candidate.lengthSq() === 0) continue;
+                    enemy.mesh.position.copy(before);
+                    enemy.box.setFromObject(enemy.mesh);
+                    if (moveEnemyWithCollision(enemy, candidate, delta)) {
+                        const afterDist = enemy.mesh.position.distanceTo(playerDolly.position);
+                        if (afterDist <= beforeDist + 0.35) return true;
+                    }
+                }
+
+                enemy.mesh.position.copy(before);
+                enemy.box.setFromObject(enemy.mesh);
+                return false;
+            }
+
+            function moveEnemyWithCollision(enemy, dir, delta) {
+                if (!dir || dir.lengthSq() === 0) return false;
+                const fullStep = enemy.speed * delta;
+                const subSteps = Math.max(1, Math.ceil(fullStep / 0.75));
+                const step = fullStep / subSteps;
+                let moved = false;
+
+                for (let n = 0; n < subSteps; n++) {
+                    const before = enemy.mesh.position.clone();
+
+                    enemy.mesh.position.x += dir.x * step;
+                    enemy.box.setFromObject(enemy.mesh);
+                    if (enemyHitsWorldCollision(enemy)) enemy.mesh.position.x = before.x;
+
+                    enemy.mesh.position.z += dir.z * step;
+                    enemy.box.setFromObject(enemy.mesh);
+                    if (enemyHitsWorldCollision(enemy)) enemy.mesh.position.z = before.z;
+
+                    enemy.box.setFromObject(enemy.mesh);
+                    moved = moved || enemy.mesh.position.distanceToSquared(before) > 0.0004;
+                }
+
+                return moved;
+            }
+
+            function getEnemyCollisionBox(enemy) {
+                const size = enemy.isFinalBoss ? 5.4 : (enemy.isBoss ? 4.7 : 1.9);
+                const height = enemy.isFinalBoss ? 6.8 : (enemy.isBoss ? 5.2 : 2.2);
+                return new THREE.Box3().setFromCenterAndSize(
+                    new THREE.Vector3(enemy.mesh.position.x, enemy.isFinalBoss ? 3.4 : (enemy.isBoss ? 2.6 : 1.25), enemy.mesh.position.z),
+                    new THREE.Vector3(size, height, size)
+                );
+            }
+
+            function enemyHitsWorldCollision(enemy) {
+                const box = getEnemyCollisionBox(enemy);
+                if (walls.some(w => box.intersectsBox(w.box))) return true;
+                if (doors.some(d => d.locked && box.intersectsBox(d.box))) return true;
+                return false;
+            }
+
+            function nudgeEnemyAwayFromWalls(enemy) {
+                const ex = Math.round(enemy.mesh.position.x / TILE_SIZE);
+                const ez = Math.round(enemy.mesh.position.z / TILE_SIZE);
+                const center = new THREE.Vector3(ex * TILE_SIZE, enemy.mesh.position.y, ez * TILE_SIZE);
+                const toCenter = center.sub(enemy.mesh.position);
+                toCenter.y = 0;
+                if (toCenter.lengthSq() > 0.01) {
+                    toCenter.normalize();
+                    moveEnemyWithCollision(enemy, toCenter, 0.16);
+                }
+
+                const direct = new THREE.Vector3().subVectors(playerDolly.position, enemy.mesh.position);
+                direct.y = 0;
+                if (direct.lengthSq() > 0.01) {
+                    direct.normalize();
+                    const side = Math.random() < 0.5
+                        ? new THREE.Vector3(-direct.z, 0, direct.x)
+                        : new THREE.Vector3(direct.z, 0, -direct.x);
+                    moveEnemyWithCollision(enemy, side.normalize(), 0.08);
+                }
+            }
+
+            // --- MOVIMIENTO / PUERTAS ---
+            function updatePlayerMovement(delta) {
+                const session = renderer.xr.getSession();
+                if (!session) return;
+
+                if (weaponSwitchCooldown > 0) weaponSwitchCooldown -= delta;
+                if (doorWarningCooldown > 0) doorWarningCooldown -= delta;
+
+                for (const source of session.inputSources) {
+                    if (!source.gamepad) continue;
+
+                    let axX = 0;
+                    let axY = 0;
+                    if (source.gamepad.axes.length >= 4) {
+                        axX = source.gamepad.axes[2];
+                        axY = source.gamepad.axes[3];
+                    } else if (source.gamepad.axes.length >= 2) {
+                        axX = source.gamepad.axes[0];
+                        axY = source.gamepad.axes[1];
+                    }
+                    if (Math.abs(axX) < 0.2) axX = 0;
+                    if (Math.abs(axY) < 0.2) axY = 0;
+
+                    if (source.handedness === 'left') {
+                        let isSprinting = false;
+                        if (source.gamepad.buttons[1] && source.gamepad.buttons[1].pressed && stamina > 0) {
+                            isSprinting = true;
+                            stamina = Math.max(0, stamina - 24 * delta);
+                        } else {
+                            stamina = Math.min(MAX_STAMINA, stamina + 32 * delta);
+                        }
+
+                        if (axX !== 0 || axY !== 0) {
+                            const moveSpeed = (isSprinting && stamina > 0 ? 11 : 6) * delta;
+                            const fwDir = new THREE.Vector3();
+                            camera.getWorldDirection(fwDir);
+                            fwDir.y = 0;
+                            fwDir.normalize();
+                            const rtDir = new THREE.Vector3().copy(fwDir).cross(camera.up).normalize();
+
+                            const moveVec = new THREE.Vector3();
+                            moveVec.addScaledVector(fwDir, -axY * moveSpeed);
+                            moveVec.addScaledVector(rtDir, axX * moveSpeed);
+
+                            const px = playerDolly.position.x + moveVec.x;
+                            const pz = playerDolly.position.z + moveVec.z;
+                            const pBox = new THREE.Box3().setFromCenterAndSize(new THREE.Vector3(px, 1, pz), new THREE.Vector3(2, 2, 2));
+                            if (!hitsWorldCollision(pBox)) {
+                                playerDolly.position.x = px;
+                                playerDolly.position.z = pz;
+                            }
+                        }
+                    }
+
+                    if (source.handedness === 'right') {
+                        const stickSwitchActive = Math.abs(axX) > 0.65;
+                        if (stickSwitchActive && !rightStickWeaponAxisWasActive && weaponSwitchCooldown <= 0) {
+                            switchWeapon(axX > 0 ? 1 : -1);
+                            weaponSwitchCooldown = 0.28;
+                        }
+                        rightStickWeaponAxisWasActive = stickSwitchActive;
+                    }
+                }
+            }
+
+            function hitsWorldCollision(box) {
+                if (walls.some(w => box.intersectsBox(w.box))) return true;
+                if (doors.some(d => d.locked && box.intersectsBox(d.box))) return true;
+                return false;
+            }
+
+            function updateDoorTransitions() {
+                if (isDirectoryTransitioning) return;
+                for (const d of doors) {
+                    const dist = playerDolly.position.distanceTo(d.mesh.position);
+                    if (dist < TILE_SIZE / 1.55) {
+                        if (d.locked) {
+                            if (doorWarningCooldown <= 0) {
+                                if (d.routeLocked) notifyTecGPT('Ruta no autorizada todavía. Sigue la ruta sugerida para eliminar el virus.');
+                                else notifyTecGPT('Puerta bloqueada. Limpia la oleada de esta habitación para desbloquear el directorio.');
+                                updateHUD(d.routeLocked ? 'RUTA BLOQUEADA' : 'OLEADA ACTIVA');
+                                doorWarningCooldown = 4.0;
+                            }
+                        } else {
+                            playDoorOpenSound();
+                            beginDirectoryTransition(d.targetPath);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // --- AUDIO ---
+            function playSoundResource(fileName, volume = 1.0) {
+                if (!soundCache.has(fileName)) {
+                    const base = new Audio(fileName);
+                    base.preload = 'auto';
+                    base.load();
+                    soundCache.set(fileName, base);
+                }
+                const audio = soundCache.get(fileName).cloneNode(true);
+                audio.volume = volume;
+                audio.play().catch(() => {});
+            }
+
+            function playShootSound() {
+                playSoundResource('shot.mp3', 0.9);
+            }
+
+            function playEnemyKillSound() {
+                playSoundResource('enemy_kill.mp3', 0.95);
+            }
+
+            function playCureSound() {
+                playSoundResource('cure.mp3', 0.95);
+            }
+
+            function playPowerupSound() {
+                playSoundResource('powerup.mp3', 0.95);
+            }
+
+            function playErrorSound() {
+                playSoundResource('error.mp3', 0.75);
+            }
+
+            function playPlayerDamageSound() {
+                playSoundResource('damage.mp3', 0.95);
+            }
+
+            function playDoorOpenSound() {
+                playSoundResource('door_open.mp3', 0.95);
+            }
+
+            function cleanupActiveRoomEntities() {
+                enemies.forEach(e => scene.remove(e.mesh));
+                dyingEnemies.forEach(e => scene.remove(e.mesh));
+                lasers.forEach(l => scene.remove(l.mesh));
+                pickups.forEach(p => scene.remove(p.mesh));
+                enemies = [];
+                dyingEnemies = [];
+                lasers = [];
+                pickups = [];
+                activeWave = null;
+                pendingWaveAfterUpgrade = false;
+            }
+
+            function respawnAtCheckpoint() {
+                if (isDirectoryTransitioning) return;
+                isDirectoryTransitioning = true;
+                isGameRunning = false;
+                playerDeathVoiceQueued = true;
+                playPlayerDamageSound();
+                notifyTecGPT('¡Boss, ¿estás bien? No me aparece tu ubicación, Boss ¡por favor, responde!');
+                showLoadingScreen('/');
+
+                const savedWeapon = checkpointWeaponType || unlockedWeapons[unlockedWeapons.length - 1] || 'int';
+                setTimeout(() => {
+                    cleanupActiveRoomEntities();
+                    health = 100;
+                    stamina = MAX_STAMINA;
+                    clipAmmo = Math.min(MAX_AMMO, Math.max(clipAmmo, 120));
+                    loadDirectory('/');
+                    const savedIndex = unlockedWeapons.indexOf(savedWeapon);
+                    currentWeaponIndex = savedIndex >= 0 ? savedIndex : Math.max(0, unlockedWeapons.length - 1);
+                    updateWeaponMaterial();
+                    hideLoadingScreen();
+                    isDirectoryTransitioning = false;
+                    isGameRunning = true;
+                    playerDeathVoiceQueued = false;
+                    lastBehindWarningTime = clock.getElapsedTime();
+                    updateHUD('CHECKPOINT RESTAURADO');
+                }, 900);
+            }
+
+            // --- PANTALLAS FINALES ---
+            function showEndScreen(title, subtitle, color) {
+                isGameOver = true;
+                isGameRunning = false;
+                activeWave = null;
+
+                const canvas = document.createElement('canvas');
+                canvas.width = 1024;
+                canvas.height = 1024;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = color === '#00ffaa' ? 'rgba(0, 30, 20, 0.95)' : 'rgba(40, 0, 0, 0.95)';
+                ctx.fillRect(0, 0, 1024, 1024);
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 15;
+                ctx.strokeRect(0, 0, 1024, 1024);
+                ctx.textAlign = 'center';
+                ctx.fillStyle = color;
+                ctx.font = 'bold 104px Courier New';
+                ctx.fillText(title, 512, 280);
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 62px Courier New';
+                ctx.fillText(subtitle, 512, 485);
+                ctx.fillStyle = '#0f0';
+                ctx.font = 'bold 54px Courier New';
+                ctx.fillText('[ DISPARA AQUÍ ]', 512, 740);
+                ctx.fillText('PARA REINICIAR', 512, 830);
+
+                const tex = new THREE.CanvasTexture(canvas);
+                const geo = new THREE.PlaneGeometry(1.5, 1.5);
+                const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false });
+                gameOverMesh = new THREE.Mesh(geo, mat);
+                gameOverMesh.renderOrder = 1002;
+                gameOverMesh.position.set(0, 0, -1.5);
+                camera.add(gameOverMesh);
+            }
+
+            function finishGame() {
+                notifyTecGPT('El virus ha sido eliminado. Variable Overload ha sido purgado del servidor. Buen trabajo, Boss.');
+                showEndScreen('SERVER CLEAN', `SCORE FINAL: ${score}`, '#00ffaa');
+            }
+
+            // --- LOOP ---
+            function animate() {
+                const delta = clock.getDelta();
+                const time = clock.getElapsedTime();
+
+                updateNotification();
+
+                if (isDirectoryTransitioning) {
+                    renderer.render(scene, camera);
+                    return;
+                }
+
+                if (!isGameRunning) {
+                    renderer.render(scene, camera);
+                    return;
+                }
+
+                updatePlayerMovement(delta);
+
+                if (rightController && rightController.userData.isSelecting) fireWeapon(rightController, rightWeaponMesh);
+                if (leftController && leftController.userData.isSelecting) fireWeapon(leftController, leftWeaponMesh);
+
+                updateDoorTransitions();
+                updateWaveSpawning();
+                updateLasers(delta);
+                updateDyingEnemies(delta);
+                updatePickups(delta);
+
+                if (time - lastFlowFieldUpdate > 0.28) {
+                    const px = Math.floor(playerDolly.position.x / TILE_SIZE);
+                    const pz = Math.floor(playerDolly.position.z / TILE_SIZE);
+                    updateFlowField(px, pz);
+                    lastFlowFieldUpdate = time;
+                }
+
+                updateEnemies(delta, time);
+
+                if (time - lastHudUpdate > 0.12) {
+                    updateHUD();
+                    lastHudUpdate = time;
+                }
+
+                renderer.render(scene, camera);
+            }
+
+            function onWindowResize() {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            }
+        } catch (error) {
+            document.getElementById('error-log').innerText = '❌ Falla de ejecución: ' + error.message;
+            console.error(error);
+        }
+    </script>
+</body>
+</html>
