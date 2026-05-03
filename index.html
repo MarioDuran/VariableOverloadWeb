@@ -353,6 +353,7 @@
             let weaponMat = null;
             let gameOverMesh = null;
             let desktopWeaponControl = null;
+            const DESKTOP_WEAPON_POSITION = new THREE.Vector3(0.36, -0.33, -0.72);
             const keys = new Set();
             let mouseDown = false;
             let yaw = 0;
@@ -437,6 +438,7 @@
             const notificationQueue = [];
             let activeNotification = null;
             let notificationStartTime = 0;
+            let notificationPlaybackToken = 0;
 
             // --- AUDIO ---
             let audioCtx;
@@ -444,6 +446,7 @@
             let bgm;
             let currentTecGPTAudio = null;
             let notificationPreparing = false;
+            const tecGPTAudioCache = new Map();
             const soundCache = new Map();
 
             init();
@@ -490,9 +493,9 @@
                 rightController = desktopWeaponControl;
                 rightWeaponMesh = createGunMesh();
                 rightWeaponMesh.scale.setScalar(2.65);
-                rightWeaponMesh.position.set(0.36, -0.33, -0.72);
-                rightWeaponMesh.rotation.set(-0.18, -0.05, 0);
+                rightWeaponMesh.position.copy(DESKTOP_WEAPON_POSITION);
                 camera.add(rightWeaponMesh);
+                updateDesktopWeaponAim();
 
                 setupDesktopControls();
                 document.getElementById('start-button').addEventListener('click', () => {
@@ -702,49 +705,72 @@
 
                 activeNotification.lastTypedChars = -1;
                 activeNotification.ready = false;
+                activeNotification.audioStarted = false;
                 drawNotification('');
                 if (notificationPanel) notificationPanel.style.opacity = 0;
 
                 const line = activeNotification.speak ? findTecGPTVoiceLine(activeNotification.text) : null;
                 if (line) {
                     notificationPreparing = true;
+                    const token = ++notificationPlaybackToken;
                     loadTecGPTAudioFile(line.fileBase)
                         .then(audio => {
-                            if (activeNotification) activeNotification.audio = audio;
-                            beginActiveNotification();
+                            if (token !== notificationPlaybackToken || !activeNotification) return;
+                            activeNotification.audio = audio;
+                            beginActiveNotification(token);
                         })
-                        .catch(() => beginActiveNotification());
+                        .catch(err => {
+                            console.warn(err);
+                            if (token !== notificationPlaybackToken || !activeNotification) return;
+                            beginActiveNotification(token);
+                        });
                 } else {
-                    beginActiveNotification();
+                    beginActiveNotification(++notificationPlaybackToken);
                 }
             }
 
-            function beginActiveNotification() {
-                if (!activeNotification) return;
+            async function beginActiveNotification(token = notificationPlaybackToken) {
+                const notification = activeNotification;
+                if (!notification) return;
                 notificationPreparing = false;
-                notificationStartTime = clock.getElapsedTime();
-                activeNotification.ready = true;
-                activeNotification.lastTypedChars = -1;
+                notification.ready = false;
+                notification.lastTypedChars = -1;
 
-                const displayLength = `TecGPT: "${activeNotification.text}"`.length;
-                if (activeNotification.audio && Number.isFinite(activeNotification.audio.duration) && activeNotification.audio.duration > 0) {
-                    activeNotification.duration = Math.max(activeNotification.duration, activeNotification.audio.duration + 1.0);
-                    activeNotification.typeDuration = Math.min(activeNotification.duration - 0.4, Math.max(3.5, activeNotification.audio.duration * 0.92));
+                const displayLength = `TecGPT: "${notification.text}"`.length;
+                if (notification.audio && Number.isFinite(notification.audio.duration) && notification.audio.duration > 0) {
+                    notification.duration = Math.max(notification.duration, notification.audio.duration + 1.0);
+                    notification.typeDuration = Math.min(notification.duration - 0.4, Math.max(3.5, notification.audio.duration * 0.92));
                 } else {
-                    activeNotification.typeDuration = Math.max(4.0, displayLength / 18);
+                    notification.typeDuration = Math.max(4.0, displayLength / 18);
                 }
 
-                drawNotification(activeNotification.text, 0);
-                if (activeNotification.audio) {
-                    if (currentTecGPTAudio && currentTecGPTAudio !== activeNotification.audio) {
+                if (notification.audio) {
+                    if (currentTecGPTAudio && currentTecGPTAudio !== notification.audio) {
                         try {
                             currentTecGPTAudio.pause();
                             currentTecGPTAudio.currentTime = 0;
                         } catch (err) {}
                     }
-                    currentTecGPTAudio = activeNotification.audio;
+                    currentTecGPTAudio = notification.audio;
                     currentTecGPTAudio.currentTime = 0;
-                    currentTecGPTAudio.play().catch(() => {});
+
+                    // No mostramos ni tipeamos el diálogo hasta que el audio ya pueda empezar.
+                    try {
+                        await currentTecGPTAudio.play();
+                        notification.audioStarted = true;
+                    } catch (err) {
+                        console.warn('No se pudo iniciar audio de TecGPT:', err);
+                    }
+                }
+
+                if (token !== notificationPlaybackToken || notification !== activeNotification) return;
+
+                notificationStartTime = clock.getElapsedTime();
+                notification.ready = true;
+                drawNotification(notification.text, 0);
+                if (notificationPanel) {
+                    notificationPanel.style.opacity = 0;
+                    notificationPanel.style.transform = 'translateX(-50%) translateY(28px)';
                 }
             }
 
@@ -767,8 +793,17 @@
             }
 
             function loadTecGPTAudioFile(fileBase) {
-                return new Promise((resolve, reject) => {
-                    const audio = new Audio(`${fileBase}.mp3`);
+                const fileName = `${fileBase}.mp3`;
+                if (tecGPTAudioCache.has(fileName)) {
+                    const cached = tecGPTAudioCache.get(fileName);
+                    return cached.ready.then(() => cached.audio.cloneNode(true));
+                }
+
+                const audio = new Audio(fileName);
+                audio.preload = 'auto';
+                audio.volume = 1.0;
+
+                const ready = new Promise((resolve, reject) => {
                     let settled = false;
                     const finish = () => {
                         if (settled) return;
@@ -778,18 +813,24 @@
                     const fail = () => {
                         if (settled) return;
                         settled = true;
-                        reject(new Error(`No se pudo cargar ${fileBase}.mp3`));
+                        reject(new Error(`No se pudo cargar ${fileName}`));
                     };
-                    audio.preload = 'auto';
-                    audio.volume = 1.0;
+
+                    if (audio.readyState >= HTMLMediaElement.HAVE_ENOUGH_DATA) {
+                        finish();
+                        return;
+                    }
+
                     audio.addEventListener('canplaythrough', finish, { once: true });
-                    audio.addEventListener('loadeddata', finish, { once: true });
                     audio.addEventListener('error', fail, { once: true });
                     setTimeout(() => {
-                        if (!settled && audio.readyState >= 2) finish();
-                    }, 1800);
+                        if (!settled && audio.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) finish();
+                    }, 6000);
                     audio.load();
                 });
+
+                tecGPTAudioCache.set(fileName, { audio, ready });
+                return ready.then(() => audio.cloneNode(true));
             }
 
             function drawNotification(text, visibleChars = Infinity) {
@@ -1775,17 +1816,17 @@
                     new THREE.CylinderGeometry(0.025, 0.035, 0.24, 12).rotateX(Math.PI / 2),
                     weaponMat
                 );
-                barrel.position.set(0, 0.025, -0.25);
+                barrel.position.set(0, 0, -0.25);
                 mesh.add(barrel);
 
                 const muzzle = new THREE.Object3D();
                 muzzle.name = 'muzzle';
-                muzzle.position.set(0, 0.025, -0.38);
+                muzzle.position.set(0, 0, -0.38);
                 mesh.add(muzzle);
 
                 const laserGeo = new THREE.BufferGeometry().setFromPoints([
-                    new THREE.Vector3(0, 0.025, -0.38),
-                    new THREE.Vector3(0, 0.025, -50)
+                    new THREE.Vector3(0, 0, -0.38),
+                    new THREE.Vector3(0, 0, -50)
                 ]);
                 const laserMat = new THREE.LineBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.5 });
                 const aimLine = new THREE.Line(laserGeo, laserMat);
@@ -1826,6 +1867,7 @@
             }
 
             function getWeaponMuzzleWorldPosition(wpnMesh) {
+                if (wpnMesh) wpnMesh.updateMatrixWorld(true);
                 const startPos = new THREE.Vector3();
                 const muzzle = wpnMesh ? wpnMesh.getObjectByName('muzzle') : null;
                 if (muzzle) muzzle.getWorldPosition(startPos);
@@ -1840,18 +1882,19 @@
                     camera.getWorldDirection(fallback);
                     return fallback.normalize();
                 }
+                wpnMesh.updateMatrixWorld(true);
                 const matrix = new THREE.Matrix4().extractRotation(wpnMesh.matrixWorld);
                 return new THREE.Vector3(0, 0, -1).applyMatrix4(matrix).normalize();
             }
 
-            function getDesktopAimDirectionFromMuzzle(muzzlePos) {
+            function getDesktopAimTarget(maxDistance = 220) {
                 const cameraOrigin = new THREE.Vector3();
                 const cameraDirection = new THREE.Vector3();
                 camera.getWorldPosition(cameraOrigin);
                 camera.getWorldDirection(cameraDirection);
                 cameraDirection.normalize();
 
-                const aimTarget = cameraOrigin.clone().addScaledVector(cameraDirection, 220);
+                const aimTarget = cameraOrigin.clone().addScaledVector(cameraDirection, maxDistance);
                 const rayTargets = [];
                 wallMeshes.forEach(mesh => rayTargets.push(mesh));
                 doors.forEach(door => rayTargets.push(door.mesh));
@@ -1859,12 +1902,57 @@
                 if (gameOverMesh) rayTargets.push(gameOverMesh);
 
                 if (rayTargets.length) {
-                    const cameraRay = new THREE.Raycaster(cameraOrigin, cameraDirection, 0, 220);
+                    const cameraRay = new THREE.Raycaster(cameraOrigin, cameraDirection, 0, maxDistance);
                     const hits = cameraRay.intersectObjects(rayTargets, false);
                     if (hits.length > 0) aimTarget.copy(hits[0].point);
                 }
+                return aimTarget;
+            }
 
-                const direction = aimTarget.sub(muzzlePos);
+            function updateAimLineForWeapon(wpnMesh, targetWorld = null) {
+                if (!wpnMesh) return;
+                wpnMesh.updateMatrixWorld(true);
+                const aimLine = wpnMesh.getObjectByName('aimLine');
+                if (!aimLine) return;
+
+                const muzzleWorld = getWeaponMuzzleWorldPosition(wpnMesh);
+                const direction = targetWorld
+                    ? new THREE.Vector3().subVectors(targetWorld, muzzleWorld)
+                    : getWeaponForwardDirection(wpnMesh);
+                if (direction.lengthSq() < 0.0001) direction.copy(getWeaponForwardDirection(wpnMesh));
+                direction.normalize();
+
+                const lineStartWorld = muzzleWorld.clone();
+                const lineEndWorld = muzzleWorld.clone().addScaledVector(direction, 52);
+                const invWorld = new THREE.Matrix4().copy(wpnMesh.matrixWorld).invert();
+                const lineStartLocal = lineStartWorld.applyMatrix4(invWorld);
+                const lineEndLocal = lineEndWorld.applyMatrix4(invWorld);
+
+                aimLine.geometry.setFromPoints([lineStartLocal, lineEndLocal]);
+                aimLine.geometry.computeBoundingSphere();
+            }
+
+            function updateDesktopWeaponAim() {
+                if (!rightWeaponMesh) return;
+                rightWeaponMesh.position.copy(DESKTOP_WEAPON_POSITION);
+
+                const target = getDesktopAimTarget(220);
+                rightWeaponMesh.lookAt(target);
+                rightWeaponMesh.updateMatrixWorld(true);
+
+                const muzzlePos = getWeaponMuzzleWorldPosition(rightWeaponMesh);
+                const direction = new THREE.Vector3().subVectors(target, muzzlePos);
+                if (direction.lengthSq() < 0.0001) direction.copy(getWeaponForwardDirection(rightWeaponMesh));
+                direction.normalize();
+
+                rightWeaponMesh.userData.aimTarget = target.clone();
+                rightWeaponMesh.userData.fireDirection = direction.clone();
+                updateAimLineForWeapon(rightWeaponMesh, muzzlePos.clone().addScaledVector(direction, 52));
+            }
+
+            function getDesktopAimDirectionFromMuzzle(muzzlePos) {
+                const target = getDesktopAimTarget(220);
+                const direction = target.sub(muzzlePos);
                 if (direction.lengthSq() < 0.0001) return getWeaponForwardDirection(rightWeaponMesh);
                 return direction.normalize();
             }
@@ -1878,10 +1966,16 @@
                 ctrl.userData.nextShot = now + fireDelay;
 
                 let direction;
-                const startPos = getWeaponMuzzleWorldPosition(wpnMesh);
                 if (ctrl.userData && ctrl.userData.desktop) {
-                    // La mira sigue el centro de pantalla, pero el rayo se origina en el cañón visible.
-                    direction = getDesktopAimDirectionFromMuzzle(startPos);
+                    // El arma, la línea verde y el disparo quedan alineados con el mismo objetivo.
+                    updateDesktopWeaponAim();
+                } else {
+                    updateAimLineForWeapon(wpnMesh);
+                }
+
+                const startPos = getWeaponMuzzleWorldPosition(wpnMesh);
+                if (ctrl.userData && ctrl.userData.desktop && wpnMesh.userData.fireDirection) {
+                    direction = wpnMesh.userData.fireDirection.clone().normalize();
                 } else {
                     direction = getWeaponForwardDirection(wpnMesh);
                 }
@@ -2516,6 +2610,7 @@
                 const time = clock.getElapsedTime();
 
                 updateNotification();
+                updateDesktopWeaponAim();
 
                 if (isDirectoryTransitioning) {
                     renderer.render(scene, camera);
